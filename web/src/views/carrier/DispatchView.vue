@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ApiError } from '@/api/request'
 import {
@@ -16,6 +17,7 @@ import type { Order } from '@/types/order'
 import type { Vehicle } from '@/types/vehicle'
 import type { DispatchHistory, TaskStatus, TransportTask } from '@/types/dispatch'
 
+const router = useRouter()
 const orders = ref<Order[]>([])
 const tasks = ref<TransportTask[]>([])
 const drivers = ref<Driver[]>([])
@@ -200,12 +202,13 @@ function canRedispatch(row: TransportTask): boolean {
       <el-table-column prop="planned_load_at" label="计划装货" width="180" />
       <el-table-column prop="planned_deliver_at" label="计划送达" width="180" />
       <el-table-column prop="status" label="任务状态" width="110" />
-      <el-table-column label="操作" width="170" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }: { row: TransportTask }">
           <el-button link type="primary" :disabled="!canRedispatch(row)" @click="openRedispatch(row)">
             重新派单
           </el-button>
           <el-button link @click="openHistory(row)">派单历史</el-button>
+          <el-button link @click="router.push(`/carrier/tasks/${row.id}/progress`)">进度</el-button>
         </template>
       </el-table-column>
       <template #empty>暂无运输任务</template>
