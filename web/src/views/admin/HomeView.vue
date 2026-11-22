@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
+const router = useRouter()
 </script>
 
 <template>
@@ -9,8 +11,9 @@ const auth = useAuthStore()
     <h1 class="page-title">工作台</h1>
     <p class="page-note">{{ auth.user?.phone }} · 管理员</p>
     <div class="panel">
-      <h2 class="panel-title">业务概览</h2>
-      <p class="panel-text">仓库管理、运输订单发布与订单跟踪将在后续版本接入。当前账号与权限已可用。</p>
+      <h2 class="panel-title">认证审核</h2>
+      <p class="panel-text">审核物流公司企业认证资料，驳回须填写公司可见的原因。</p>
+      <el-link type="primary" @click="router.push('/admin/carriers')">进入物流公司审核</el-link>
     </div>
   </section>
 </template>

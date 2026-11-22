@@ -108,3 +108,20 @@ def _origin_allowed(origin: str, allowed: tuple[str, ...]) -> bool:
 
 
 CsrfDep = Annotated[None, Depends(verify_csrf)]
+
+
+def require_active_carrier(account: CurrentAccountDep) -> UserOut:
+    """承运业务门禁：账号正常且企业认证审核通过才放行。"""
+    if account["role"] != "物流公司":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资源不存在")
+    if account["account_status"] != "正常使用":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号已被禁用")
+    if account["auth_status"] != "审核通过":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="企业认证未审核通过，无法承接订单或派单",
+        )
+    return get_current_user(account)
+
+
+ActiveCarrierDep = Annotated[UserOut, Depends(require_active_carrier)]

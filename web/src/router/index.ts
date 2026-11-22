@@ -33,6 +33,11 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, roles: ['物流公司'] },
     children: [
       { path: '', name: 'CarrierHome', component: () => import('@/views/carrier/HomeView.vue') },
+      {
+        path: 'certification',
+        name: 'CarrierCertification',
+        component: () => import('@/views/carrier/CertificationView.vue'),
+      },
     ],
   },
   {
@@ -42,6 +47,11 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, roles: ['管理员'] },
     children: [
       { path: '', name: 'AdminHome', component: () => import('@/views/admin/HomeView.vue') },
+      {
+        path: 'carriers',
+        name: 'AdminCarrierReview',
+        component: () => import('@/views/admin/CarrierReviewView.vue'),
+      },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/login' },
