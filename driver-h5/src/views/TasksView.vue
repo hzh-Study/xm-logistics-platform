@@ -130,6 +130,15 @@ function replace(updated: DriverTask): void {
             发货打卡与起运
           </button>
         </div>
+        <div v-else-if="['运输中', '待签收', '待确认完成', '异常'].includes(task.status)" class="actions">
+          <button
+            class="btn ghost"
+            type="button"
+            @click="router.push(`/tasks/${task.task_id}/exception`)"
+          >
+            上报在途异常
+          </button>
+        </div>
       </article>
     </main>
 
