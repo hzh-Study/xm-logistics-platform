@@ -44,6 +44,11 @@ const routes: RouteRecordRaw[] = [
         name: 'ShipperOrderPublish',
         component: () => import('@/views/shipper/OrderPublishView.vue'),
       },
+      {
+        path: 'orders/:orderId/progress',
+        name: 'ShipperOrderProgress',
+        component: () => import('@/views/shipper/OrderProgressView.vue'),
+      },
     ],
   },
   {
@@ -67,6 +72,11 @@ const routes: RouteRecordRaw[] = [
         path: 'dispatch',
         name: 'CarrierDispatch',
         component: () => import('@/views/carrier/DispatchView.vue'),
+      },
+      {
+        path: 'tasks/:taskId/progress',
+        name: 'CarrierTaskProgress',
+        component: () => import('@/views/carrier/TaskProgressView.vue'),
       },
       {
         path: 'drivers',

@@ -95,3 +95,11 @@ class TaskNotFoundError(Exception):
 class TaskStateError(Exception):
     """运输任务当前状态不允许该操作。"""
 
+
+class CheckinRuleError(Exception):
+    """打卡 / 装货 / 起运前置条件不满足；reason 对外可见。"""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+

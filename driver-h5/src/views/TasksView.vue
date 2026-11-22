@@ -121,6 +121,15 @@ function replace(updated: DriverTask): void {
           <button class="btn primary" type="button" :disabled="busy" @click="onAccept(task)">接受任务</button>
           <button class="btn ghost" type="button" :disabled="busy" @click="openReject(task)">拒绝</button>
         </div>
+        <div v-else-if="task.status === '待装货'" class="actions">
+          <button
+            class="btn primary"
+            type="button"
+            @click="router.push(`/tasks/${task.task_id}/departure`)"
+          >
+            发货打卡与起运
+          </button>
+        </div>
       </article>
     </main>
 
