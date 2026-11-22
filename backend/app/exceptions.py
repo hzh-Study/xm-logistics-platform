@@ -33,5 +33,13 @@ class NotPublishableError(Exception):
     """认证状态未达审核通过，不允许发布运输订单。"""
 
 
+class DriverNotFoundError(Exception):
+    """司机账号不属于当前物流公司，或不存在。"""
+
+
+class DriverBindingOrderError(Exception):
+    """首次登录必须先改密，再完成身份绑定。"""
+
+
 class WarehouseNotFoundError(Exception):
     """仓库不存在，或不属于当前货主。"""

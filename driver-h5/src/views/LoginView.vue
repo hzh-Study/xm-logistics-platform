@@ -18,7 +18,12 @@ async function onSubmit(): Promise<void> {
       showToast('该账号不是司机账号')
       return
     }
-    await router.replace('/home')
+    const target = auth.blockedReason
+      ? '/blocked'
+      : auth.needsOnboarding
+        ? '/onboarding'
+        : '/home'
+    await router.replace(target)
   } catch (error) {
     showToast(error instanceof Error ? error.message : '登录失败')
   } finally {

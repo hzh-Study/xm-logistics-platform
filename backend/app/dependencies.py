@@ -125,3 +125,21 @@ def require_active_carrier(account: CurrentAccountDep) -> UserOut:
 
 
 ActiveCarrierDep = Annotated[UserOut, Depends(require_active_carrier)]
+
+
+def require_bound_driver(
+    account: CurrentAccountDep,
+    conn: Annotated[sqlite3.Connection, Depends(get_db)],
+) -> UserOut:
+    """司机工作台门禁：已改密、完成身份绑定、在职且所属公司正常。"""
+    if account["role"] != "司机":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资源不存在")
+    from app.services.driver import onboarding
+
+    state = onboarding(conn, account["id"])
+    if state.blocked_reason:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=state.blocked_reason)
+    return get_current_user(account)
+
+
+BoundDriverDep = Annotated[UserOut, Depends(require_bound_driver)]
