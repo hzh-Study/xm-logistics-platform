@@ -1,0 +1,27 @@
+:root {
+  --color-text: #1f2329;
+  --color-text-muted: #646a73;
+  --color-border: #d9dde3;
+  --color-bg: #f5f6f7;
+  --color-surface: #ffffff;
+  --color-accent: #1664ff;
+  --color-success: #1f9d55;
+  --color-warning: #d97706;
+  --color-error: #d92d20;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+
+  --radius: 5px;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-size-sm: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 18px;
+  --line-height: 1.55;
+
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --tap-min: 44px;
+}
