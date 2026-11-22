@@ -145,7 +145,7 @@ def _admin_login(client: TestClient):
 def _review(client: TestClient, csrf: dict, account_id: int, decision: str, reason: str = ""):
     """管理员审核指定物流公司的认证。"""
     return client.post(
-        f"/api/admin/carriers/{account_id}/certification/review",
+        f"/api/admin/carrier-certifications/{account_id}/review",
         json={"decision": decision, "reason": reason},
         headers=csrf,
     )

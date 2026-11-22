@@ -58,7 +58,7 @@ def set_account_status(
 
 
 @router.post(
-    "/carriers/{account_id}/certification/review",
+    "/carrier-certifications/{account_id}/review",
     response_model=CertificationRecordOut,
 )
 def review_certification(
