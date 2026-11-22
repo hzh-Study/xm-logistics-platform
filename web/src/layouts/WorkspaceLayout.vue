@@ -23,7 +23,7 @@ function menuFor(role: CurrentUser['role'] | null): { name: string; path: string
       { name: '企业认证', path: '/carrier/certification' },
       { name: '订单池', path: '/carrier' },
       { name: '司机管理', path: '/carrier/drivers' },
-      { name: '车辆管理', path: '/carrier' },
+      { name: '车辆管理', path: '/carrier/vehicles' },
     ],
     管理员: [
       { name: '工作台', path: '/admin' },
