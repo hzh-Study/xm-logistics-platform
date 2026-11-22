@@ -25,6 +25,7 @@ function menuFor(role: CurrentUser['role'] | null): { name: string; path: string
       { name: '订单池', path: '/carrier/order-pool' },
       { name: '派单管理', path: '/carrier/dispatch' },
       { name: '运输异常', path: '/carrier/exceptions' },
+      { name: '取消申请处理', path: '/carrier/cancel-applications' },
       { name: '司机管理', path: '/carrier/drivers' },
       { name: '车辆管理', path: '/carrier/vehicles' },
       { name: '费用审核', path: '/carrier/expenses' },

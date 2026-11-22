@@ -130,7 +130,7 @@ function replace(updated: DriverTask): void {
             发货打卡与起运
           </button>
         </div>
-        <div v-else-if="task.status === '运输中' || task.status === '待签收'" class="actions">
+        <div v-else-if="['运输中', '待签收'].includes(task.status)" class="actions">
           <button
             class="btn primary"
             type="button"

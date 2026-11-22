@@ -89,6 +89,14 @@ onMounted(load)
         <template #default="{ row }">
           <el-button type="primary" link @click="openDetail(row)">详情</el-button>
           <el-button link @click="router.push(`/shipper/orders/${row.id}/progress`)">进度</el-button>
+          <el-button
+            v-if="row.status === '待承接' || row.status === '已承接'"
+            link
+            type="danger"
+            @click="router.push(`/shipper/orders/${row.id}/cancel`)"
+          >
+            取消
+          </el-button>
         </template>
       </el-table-column>
       <template #empty>

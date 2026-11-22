@@ -220,7 +220,12 @@ def migrate(conn: sqlite3.Connection) -> None:
 
             migrate_signoff(conn)
             conn.execute("PRAGMA user_version = 12")
-        # NOTE: v14 须排在 v12（签收完成）之后；合并 #16 时勿与 v15 管理员调换顺序。
+        if version < 13:
+            from app.db.migrate_cancel import migrate_cancel
+
+            migrate_cancel(conn)
+            conn.execute("PRAGMA user_version = 13")
+        # NOTE: v14 须排在 v13（订单取消）之后；合并 #16 时勿与 v15 管理员调换顺序。
         if version < 14:
             from app.db.migrate_expense import migrate_expense
 
