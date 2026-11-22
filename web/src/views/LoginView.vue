@@ -31,7 +31,19 @@ async function onSubmit(): Promise<void> {
   }
 }
 
-async function onRegister(): Promise<void> {
+async function onRegisterShipper(): Promise<void> {
+  loading.value = true
+  try {
+    await auth.registerShipper(phone.value, password.value)
+    await router.replace('/shipper')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '注册失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function onRegisterCarrier(): Promise<void> {
   registering.value = true
   try {
     await registerCarrier(regPhone.value, regPassword.value, regCompany.value)
@@ -77,8 +89,11 @@ function homeFor(role: string | null): string {
       <el-button class="submit" type="primary" native-type="submit" :loading="loading">
         登录
       </el-button>
+      <el-button class="submit" type="button" :loading="loading" @click="onRegisterShipper">
+        注册货主账号
+      </el-button>
       <button class="switch" type="button" @click="showRegister = !showRegister">
-        {{ showRegister ? '已有账号，返回登录' : '物流公司注册' }}
+        {{ showRegister ? '收起物流公司注册' : '物流公司注册' }}
       </button>
 
       <div v-if="showRegister" class="register">
@@ -101,7 +116,7 @@ function homeFor(role: string | null): string {
           <span class="field-label">企业名称</span>
           <el-input v-model="regCompany" placeholder="请输入企业名称" />
         </label>
-        <el-button class="submit" type="primary" :loading="registering" @click="onRegister">
+        <el-button class="submit" type="primary" :loading="registering" @click="onRegisterCarrier">
           注册并进入认证
         </el-button>
       </div>

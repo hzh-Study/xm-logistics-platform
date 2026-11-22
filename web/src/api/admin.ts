@@ -3,6 +3,7 @@ import type {
   CarrierSummary,
   CertificationRecord,
 } from '@/types/carrier'
+import type { AdminCertification } from '@/types/shipper'
 
 /** 列出物流公司，可按认证状态筛选。 */
 export function listCarriers(authStatus?: string): Promise<CarrierSummary[]> {
@@ -39,5 +40,22 @@ export function setCarrierAccountStatus(
   return request.post<CarrierSummary>(
     `/api/admin/carriers/${accountId}/status`,
     { account_status: accountStatus },
+  )
+}
+
+/** 管理员列出货主认证记录。 */
+export function fetchShipperCertifications(): Promise<AdminCertification[]> {
+  return request.get<AdminCertification[]>('/api/admin/shipper-certifications')
+}
+
+/** 管理员审核通过或驳回，驳回必须带原因。 */
+export function reviewShipperCertification(
+  certificationId: number,
+  decision: '审核通过' | '审核不通过',
+  rejectionReason?: string,
+): Promise<AdminCertification> {
+  return request.post<AdminCertification>(
+    `/api/admin/shipper-certifications/${certificationId}/review`,
+    { decision, rejection_reason: rejectionReason },
   )
 }

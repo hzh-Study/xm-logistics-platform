@@ -14,6 +14,7 @@ function menuFor(role: CurrentUser['role'] | null): { name: string; path: string
   const all: Record<CurrentUser['role'], { name: string; path: string }[]> = {
     货主: [
       { name: '工作台', path: '/shipper' },
+      { name: '货主认证', path: '/shipper/certification' },
       { name: '仓库管理', path: '/shipper' },
       { name: '我的订单', path: '/shipper' },
     ],
@@ -26,7 +27,8 @@ function menuFor(role: CurrentUser['role'] | null): { name: string; path: string
     ],
     管理员: [
       { name: '工作台', path: '/admin' },
-      { name: '认证审核', path: '/admin/carriers' },
+      { name: '货主认证审核', path: '/admin/shipper-certifications' },
+      { name: '公司认证审核', path: '/admin/carriers' },
       { name: '订单管理', path: '/admin' },
     ],
     司机: [],

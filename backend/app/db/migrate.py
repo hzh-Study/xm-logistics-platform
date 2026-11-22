@@ -57,6 +57,65 @@ _SCHEMA = [
     "CREATE INDEX idx_sessions_account ON sessions(account_id)",
 ]
 
+# 货主认证闭环：提交记录与审核记录均追加不可变，通知只落站内记录。
+_V2 = [
+    """
+    CREATE TABLE shipper_certifications (
+        id            INTEGER PRIMARY KEY,
+        account_id    INTEGER NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+        cert_type     TEXT NOT NULL CHECK(cert_type IN ('个人','企业')), -- 认证类型
+        name          TEXT NOT NULL,  -- 个人姓名或企业名称
+        id_number     TEXT NOT NULL,  -- 身份证号或统一社会信用代码
+        contact_phone TEXT NOT NULL,  -- 联系人电话
+        documents     TEXT NOT NULL,  -- 资料相对路径 JSON 数组
+        created_at    TEXT NOT NULL   -- 提交时间，ISO 8601
+    ) STRICT
+    """,
+    """
+    CREATE TABLE shipper_cert_reviews (
+        id               INTEGER PRIMARY KEY,
+        certification_id INTEGER NOT NULL REFERENCES shipper_certifications(id) ON DELETE RESTRICT,
+        decision         TEXT NOT NULL CHECK(decision IN ('审核通过','审核不通过')), -- 审核结论
+        reason           TEXT NOT NULL DEFAULT '', -- 驳回原因，审核不通过时必填
+        actor_id         INTEGER NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT, -- 审核人
+        created_at       TEXT NOT NULL, -- 审核时间，ISO 8601
+        replaced_by      INTEGER REFERENCES shipper_cert_reviews(id) ON DELETE RESTRICT -- 更正记录
+    ) STRICT
+    """,
+    """
+    CREATE TABLE notifications (
+        id            INTEGER PRIMARY KEY,
+        recipient_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+        recipient_role TEXT NOT NULL CHECK(recipient_role IN ('货主','物流公司','司机','管理员')), -- 收件人角色
+        kind          TEXT NOT NULL, -- 通知类型
+        title         TEXT NOT NULL, -- 通知标题
+        body          TEXT NOT NULL, -- 通知正文
+        related_id    INTEGER,  -- 关联业务记录 id
+        created_at    TEXT NOT NULL -- 创建时间，ISO 8601
+    ) STRICT
+    """,
+    """
+    CREATE TABLE orders (
+        id          INTEGER PRIMARY KEY,
+        order_no    TEXT NOT NULL UNIQUE, -- 运输订单号，prefix-YYMMDD-0001
+        shipper_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+        cargo_name  TEXT NOT NULL,  -- 货物名称
+        status      TEXT NOT NULL DEFAULT '待承接'
+            CHECK(status IN ('待承接','已承接','运输中','已完成','取消处理中','已取消','异常处理中')), -- 运输订单状态
+        created_at  TEXT NOT NULL   -- 发布时间，ISO 8601
+    ) STRICT
+    """,
+    "CREATE INDEX idx_shipper_certs_account ON shipper_certifications(account_id)",
+    "CREATE INDEX idx_shipper_cert_reviews_cert ON shipper_cert_reviews(certification_id)",
+    "CREATE INDEX idx_notifications_recipient ON notifications(recipient_id)",
+    "CREATE INDEX idx_orders_shipper ON orders(shipper_id)",
+    "CREATE INDEX idx_orders_no ON orders(order_no)",
+    "CREATE TRIGGER trg_shipper_cert_immutable BEFORE UPDATE ON shipper_certifications BEGIN SELECT RAISE(ABORT, 'immutable history'); END",
+    "CREATE TRIGGER trg_shipper_cert_no_delete BEFORE DELETE ON shipper_certifications BEGIN SELECT RAISE(ABORT, 'immutable history'); END",
+    "CREATE TRIGGER trg_shipper_review_immutable BEFORE UPDATE ON shipper_cert_reviews BEGIN SELECT RAISE(ABORT, 'immutable history'); END",
+    "CREATE TRIGGER trg_shipper_review_no_delete BEFORE DELETE ON shipper_cert_reviews BEGIN SELECT RAISE(ABORT, 'immutable history'); END",
+]
+
 _PROFILE_TABLES = {
     "货主": "shipper_profiles",
     "物流公司": "carrier_profiles",
@@ -77,6 +136,8 @@ def migrate(conn: sqlite3.Connection) -> None:
                 conn.execute(statement)
             conn.execute("PRAGMA user_version = 1")
         if version < 2:
+            for statement in _V2:
+                conn.execute(statement)
             from app.db.migrate_carrier import migrate_carrier
 
             migrate_carrier(conn)
