@@ -45,6 +45,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/DepartureView.vue'),
     meta: { requiresAuth: true },
   },
+  {
+    path: '/tasks/:taskId/exception',
+    name: 'DriverException',
+    component: () => import('@/views/ExceptionView.vue'),
+    meta: { requiresAuth: true },
+  },
   { path: '/:pathMatch(.*)*', redirect: '/login' },
 ]
 
