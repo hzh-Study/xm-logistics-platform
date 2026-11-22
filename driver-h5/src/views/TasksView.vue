@@ -142,6 +142,15 @@ function replace(updated: DriverTask): void {
         <div v-else-if="task.status === '待确认完成'" class="actions">
           <p class="wait-note">签收资料已提交，等待物流公司确认完成</p>
         </div>
+        <div v-if="['运输中', '待签收', '待确认完成', '异常'].includes(task.status)" class="actions">
+          <button
+            class="btn ghost"
+            type="button"
+            @click="router.push(`/tasks/${task.task_id}/exception`)"
+          >
+            上报在途异常
+          </button>
+        </div>
       </article>
     </main>
 

@@ -79,6 +79,16 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/carrier/TaskProgressView.vue'),
       },
       {
+        path: 'exceptions',
+        name: 'CarrierExceptions',
+        component: () => import('@/views/carrier/ExceptionTasksView.vue'),
+      },
+      {
+        path: 'tasks/:taskId/exceptions',
+        name: 'CarrierExceptionHandling',
+        component: () => import('@/views/carrier/ExceptionHandlingView.vue'),
+      },
+      {
         path: 'drivers',
         name: 'CarrierDrivers',
         component: () => import('@/views/carrier/DriversView.vue'),
