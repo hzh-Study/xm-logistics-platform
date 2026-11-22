@@ -2,7 +2,7 @@
 
 import sqlite3
 
-LATEST_VERSION = 3
+LATEST_VERSION = 4
 
 _SCHEMA = [
     """
@@ -144,6 +144,11 @@ def migrate(conn: sqlite3.Connection) -> None:
 
             migrate_carrier(conn)
             conn.execute("PRAGMA user_version = 3")
+        if version < 4:
+            from app.db.migrate_warehouse import migrate_warehouse
+
+            migrate_warehouse(conn)
+            conn.execute("PRAGMA user_version = 4")
         conn.commit()
     except Exception:
         conn.rollback()

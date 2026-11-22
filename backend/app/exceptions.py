@@ -31,3 +31,7 @@ class CertificationNotFoundError(Exception):
 
 class NotPublishableError(Exception):
     """认证状态未达审核通过，不允许发布运输订单。"""
+
+
+class WarehouseNotFoundError(Exception):
+    """仓库不存在，或不属于当前货主。"""

@@ -15,7 +15,7 @@ function menuFor(role: CurrentUser['role'] | null): { name: string; path: string
     货主: [
       { name: '工作台', path: '/shipper' },
       { name: '货主认证', path: '/shipper/certification' },
-      { name: '仓库管理', path: '/shipper' },
+      { name: '仓库管理', path: '/shipper/warehouses' },
       { name: '我的订单', path: '/shipper' },
     ],
     物流公司: [
