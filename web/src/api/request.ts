@@ -69,6 +69,13 @@ class RequestClient {
       body: body === undefined ? undefined : JSON.stringify(body),
     })
   }
+
+  put<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(path, {
+      method: 'PUT',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  }
 }
 
 export const request = new RequestClient()
