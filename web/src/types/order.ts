@@ -87,6 +87,8 @@ export interface Order {
   shipper_id: number
   cargo_name: string
   status: OrderStatus
+  carrier_id: number | null
+  accepted_at: string | null
   created_at: string
   cargo_type: string
   quantity: string
@@ -121,4 +123,17 @@ export interface OrderFilter {
   receiving_place?: string
   published_from?: string
   published_to?: string
+}
+
+/** 公共订单池筛选条件（池内只含待承接货源）。 */
+export interface PoolFilter {
+  shipping_place?: string
+  receiving_place?: string
+  cargo_type?: string
+  vehicle_type?: string
+  weight?: string
+  published_from?: string
+  published_to?: string
+  quote_min_yuan?: string
+  quote_max_yuan?: string
 }

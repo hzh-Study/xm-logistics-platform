@@ -185,6 +185,11 @@ def migrate(conn: sqlite3.Connection) -> None:
 
             migrate_order(conn)
             conn.execute("PRAGMA user_version = 5")
+        if version < 6:
+            from app.db.migrate_order_pool import migrate_order_pool
+
+            migrate_order_pool(conn)
+            conn.execute("PRAGMA user_version = 6")
         if version < 7:
             for statement in _V7:
                 conn.execute(statement)

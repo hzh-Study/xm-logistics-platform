@@ -14,6 +14,7 @@ from app.routers import (
     admin,
     auth,
     carrier,
+    carrier_pool,
     cert_review,
     driver,
     shipper,
@@ -54,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(shipper.router)
     app.include_router(carrier.router)
+    app.include_router(carrier_pool.router)
     app.include_router(driver.carrier_router)
     app.include_router(driver.driver_router)
     app.include_router(cert_review.router)

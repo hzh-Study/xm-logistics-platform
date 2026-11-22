@@ -59,6 +59,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/carrier/CertificationView.vue'),
       },
       {
+        path: 'order-pool',
+        name: 'CarrierOrderPool',
+        component: () => import('@/views/carrier/OrderPoolView.vue'),
+      },
+      {
         path: 'drivers',
         name: 'CarrierDrivers',
         component: () => import('@/views/carrier/DriversView.vue'),

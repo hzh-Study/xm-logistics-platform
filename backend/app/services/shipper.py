@@ -278,7 +278,7 @@ def list_notifications(
     ]
 
 
-_ORDER_COLUMNS = (
+ORDER_COLUMNS = (
     "id, order_no, shipper_id, cargo_name, status, created_at, "
     "cargo_type, quantity, weight, volume, packaging, cargo_photos, cargo_remarks, "
     "ship_source, ship_warehouse_id, ship_name, ship_contact, ship_phone, "
@@ -287,7 +287,7 @@ _ORDER_COLUMNS = (
     "recv_detail_address, vehicle_type, vehicle_length, load_requirement, "
     "cold_chain, rain_protection, enclosed_body, special_loading, "
     "other_services, transport_remarks, quote_method, quote_amount_cents, "
-    "accept_bargain, quote_remarks"
+    "accept_bargain, quote_remarks, carrier_id, accepted_at"
 )
 
 
@@ -301,7 +301,7 @@ def _cents_to_yuan(cents: int) -> str:
     return f"{cents // 100}.{cents % 100:02d}"
 
 
-def _to_out(row: sqlite3.Row) -> OrderOut:
+def to_order_out(row: sqlite3.Row) -> OrderOut:
     """把订单行组装成出参，金额由分转为元，快照独立成对象。"""
     return OrderOut(
         id=row["id"],
@@ -309,6 +309,8 @@ def _to_out(row: sqlite3.Row) -> OrderOut:
         shipper_id=row["shipper_id"],
         cargo_name=row["cargo_name"],
         status=row["status"],
+        carrier_id=row["carrier_id"],
+        accepted_at=row["accepted_at"],
         created_at=row["created_at"],
         cargo_type=row["cargo_type"],
         quantity=row["quantity"],
@@ -357,7 +359,7 @@ def _to_out(row: sqlite3.Row) -> OrderOut:
 def _get_owned(conn: sqlite3.Connection, shipper_id: int, order_id: int) -> sqlite3.Row:
     """按当前货主读取订单，非本人记录一律视为不存在。"""
     row = conn.execute(
-        f"SELECT {_ORDER_COLUMNS} FROM orders WHERE id = ? AND shipper_id = ?",
+        f"SELECT {ORDER_COLUMNS} FROM orders WHERE id = ? AND shipper_id = ?",
         (order_id, shipper_id),
     ).fetchone()
     if row is None:
@@ -492,12 +494,12 @@ def publish_order(
     except Exception:
         conn.rollback()
         raise
-    return _to_out(_get_owned(conn, account_id, order_id))
+    return to_order_out(_get_owned(conn, account_id, order_id))
 
 
 def get_order(conn: sqlite3.Connection, shipper_id: int, order_id: int) -> OrderOut:
     """货主读取自己订单的完整详情。"""
-    return _to_out(_get_owned(conn, shipper_id, order_id))
+    return to_order_out(_get_owned(conn, shipper_id, order_id))
 
 
 def list_orders(
@@ -542,10 +544,10 @@ def list_orders(
         clauses.append("created_at <= ?")
         params.append(published_to)
     rows = conn.execute(
-        f"SELECT {_ORDER_COLUMNS} FROM orders WHERE "
+        f"SELECT {ORDER_COLUMNS} FROM orders WHERE "
         + " AND ".join(clauses)
         + " ORDER BY id DESC",
         params,
     ).fetchall()
-    return [_to_out(row) for row in rows]
+    return [to_order_out(row) for row in rows]
 
