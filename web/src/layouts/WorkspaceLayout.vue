@@ -27,6 +27,7 @@ function menuFor(role: CurrentUser['role'] | null): { name: string; path: string
       { name: '运输异常', path: '/carrier/exceptions' },
       { name: '司机管理', path: '/carrier/drivers' },
       { name: '车辆管理', path: '/carrier/vehicles' },
+      { name: '费用审核', path: '/carrier/expenses' },
     ],
     管理员: [
       { name: '工作台', path: '/admin' },
