@@ -130,7 +130,7 @@ function replace(updated: DriverTask): void {
             发货打卡与起运
           </button>
         </div>
-        <div v-else-if="task.status === '运输中' || task.status === '待签收'" class="actions">
+        <div v-else-if="['运输中', '待签收'].includes(task.status)" class="actions">
           <button
             class="btn primary"
             type="button"
@@ -146,8 +146,7 @@ function replace(updated: DriverTask): void {
             上报在途异常
           </button>
         </div>
-        <div v-else-if="task.status === '待确认完成'" class="actions">
-          <p class="wait-note">签收资料已提交，等待物流公司确认完成</p>
+        <div v-else-if="['待确认完成', '异常'].includes(task.status)" class="actions">
           <button
             class="btn ghost"
             type="button"
@@ -155,15 +154,7 @@ function replace(updated: DriverTask): void {
           >
             上报在途异常
           </button>
-        </div>
-        <div v-else-if="task.status === '异常'" class="actions">
-          <button
-            class="btn ghost"
-            type="button"
-            @click="router.push(`/tasks/${task.task_id}/exception`)"
-          >
-            查看异常处理
-          </button>
+          <p v-if="task.status === '待确认完成'" class="wait-note">签收资料已提交，等待物流公司确认完成</p>
         </div>
       </article>
     </main>
