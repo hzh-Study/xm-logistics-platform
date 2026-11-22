@@ -35,7 +35,7 @@ onMounted(async () => {
     <div class="panel">
       <h2 class="panel-title">企业认证</h2>
       <p class="panel-text">当前认证状态：{{ certification?.auth_status ?? '读取中' }}</p>
-      <p v-if="certification?.latest?.decision === '驳回'" class="reason">
+      <p v-if="certification?.latest?.decision === '审核不通过'" class="reason">
         驳回原因：{{ certification.latest.reason }}
       </p>
       <p class="panel-text">审核通过后，订单池承接、派单、司机管理与车辆管理方可使用。</p>

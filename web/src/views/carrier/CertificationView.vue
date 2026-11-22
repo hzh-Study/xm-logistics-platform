@@ -32,7 +32,7 @@ const form = reactive<CertificationSubmitPayload>({
 
 const rejection = computed(() => {
   const latest = view.value?.latest
-  return latest?.decision === '驳回' ? latest.reason : ''
+  return latest?.decision === '审核不通过' ? latest.reason : ''
 })
 
 const blockedReasons = computed(() => capabilities.value?.reasons ?? [])

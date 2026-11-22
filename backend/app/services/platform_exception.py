@@ -1,7 +1,7 @@
 """平台异常管理与车辆转籍业务：只追加处理与转籍历史，不改写业务实体。"""
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.exceptions import (
     AccountNotFoundError,
@@ -43,7 +43,7 @@ _TRANSFER_SELECT = """
 
 
 def _now_dt() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now()
 
 
 def _next_no(
@@ -295,7 +295,8 @@ def _in_progress_task(
     placeholders = ",".join("?" for _ in _IN_PROGRESS_TASK_STATUSES)
     return conn.execute(
         f"SELECT task_no, status FROM transport_tasks "
-        f"WHERE vehicle_id = ? AND status IN ({placeholders}) ORDER BY id LIMIT 1",
+        f"WHERE vehicle_id = ? AND status IN ({placeholders}) "
+        "AND cancel_status != '已取消' ORDER BY id LIMIT 1",
         (vehicle_id, *_IN_PROGRESS_TASK_STATUSES),
     ).fetchone()
 

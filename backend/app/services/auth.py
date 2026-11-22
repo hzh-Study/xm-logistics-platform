@@ -1,7 +1,7 @@
 """鉴权业务：口令校验、会话创建与撤销。"""
 
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from app.config import Settings
 from app.core.security import (
@@ -34,7 +34,7 @@ def create_session(
     """创建会话记录，返回 (token, csrf, 用户)。"""
     token = new_token()
     csrf = new_csrf_token()
-    now = datetime.now(timezone.utc)
+    now = datetime.now()
     expires = now + timedelta(seconds=settings.session_ttl_seconds)
     conn.execute("BEGIN IMMEDIATE")
     try:
@@ -71,7 +71,7 @@ def revoke_session(conn: sqlite3.Connection, token: str) -> None:
     try:
         conn.execute(
             "UPDATE sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL",
-            (datetime.now(timezone.utc).isoformat(), sha256_hex(token)),
+            (datetime.now().isoformat(), sha256_hex(token)),
         )
         conn.commit()
     except Exception:

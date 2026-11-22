@@ -1,11 +1,13 @@
 """物流公司业务：注册、企业认证提交与只读查询、业务能力投影。"""
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.core.security import hash_password
 from app.exceptions import PhoneAlreadyRegisteredError
 from app.schemas.auth import UserOut
+from app.services.cert_decision import to_api
+from app.services.notify import notify as _notify
 from app.schemas.carrier import (
     CapabilitiesOut,
     CertificationRecordOut,
@@ -31,7 +33,7 @@ def register_carrier(
         ).fetchone()
         if exists is not None:
             raise PhoneAlreadyRegisteredError()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now().isoformat()
         cursor = conn.execute(
             """INSERT INTO accounts
                (phone, role, account_status, auth_status, password_hash, created_at)
@@ -57,8 +59,10 @@ def register_carrier(
 
 
 def _to_record(row: sqlite3.Row) -> CertificationRecordOut:
-    """将认证记录行转为出参模型。"""
-    return CertificationRecordOut(**dict(row))
+    """将认证记录行转为出参模型；审核结论统一为对外取值。"""
+    data = dict(row)
+    data["decision"] = to_api(data["decision"])
+    return CertificationRecordOut(**data)
 
 
 def submit_certification(
@@ -67,18 +71,19 @@ def submit_certification(
     """追加一条企业认证提交记录，并将认证状态置为待审核。"""
     conn.execute("BEGIN IMMEDIATE")
     try:
+        # 当前记录为 replaced_by IS NULL；新记录追加后仅回填旧记录的前向指针
         prior = conn.execute(
-            "SELECT id FROM carrier_certifications WHERE account_id = ? "
-            "ORDER BY id DESC LIMIT 1",
+            "SELECT id FROM carrier_certifications "
+            "WHERE account_id = ? AND replaced_by IS NULL ORDER BY id DESC LIMIT 1",
             (account_id,),
         ).fetchone()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now().isoformat()
         cursor = conn.execute(
             """INSERT INTO carrier_certifications
                (account_id, kind, decision, company_name, license_no, license_path,
                 legal_person, contact_name, contact_phone, qualification_path,
                 note, reason, actor, replaced_by, created_at)
-               VALUES (?, '提交', '', ?, ?, ?, ?, ?, ?, ?, ?, '', '物流公司', ?, ?)""",
+               VALUES (?, '提交', '', ?, ?, ?, ?, ?, ?, ?, ?, '', '物流公司', NULL, ?)""",
             (
                 account_id,
                 payload.company_name,
@@ -89,10 +94,14 @@ def submit_certification(
                 payload.contact_phone,
                 payload.qualification_path,
                 payload.note,
-                prior["id"] if prior else None,
                 now,
             ),
         )
+        if prior is not None:
+            conn.execute(
+                "UPDATE carrier_certifications SET replaced_by = ? WHERE id = ?",
+                (cursor.lastrowid, prior["id"]),
+            )
         conn.execute(
             "UPDATE accounts SET auth_status = '待审核' WHERE id = ?", (account_id,)
         )

@@ -20,6 +20,9 @@ class WarehouseIn(BaseModel):
     detail_address: str = Field(min_length=1, max_length=256)
     type: str = Field(min_length=1, max_length=32)
     remarks: str = Field(default="", max_length=500)
+    # 仓库坐标，发布时固化到订单发货快照
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
 
 
 class WarehouseOut(BaseModel):
@@ -39,6 +42,8 @@ class WarehouseOut(BaseModel):
     detail_address: str
     type: str
     remarks: str
+    latitude: float | None
+    longitude: float | None
     status: str
     created_at: str
     updated_at: str

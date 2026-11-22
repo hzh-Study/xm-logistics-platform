@@ -7,7 +7,7 @@ export interface CertificationRecord {
   id: number
   account_id: number
   kind: '提交' | '审核'
-  decision: '' | '通过' | '驳回'
+  decision: '' | '审核通过' | '审核不通过'
   company_name: string
   license_no: string
   license_path: string

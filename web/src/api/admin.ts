@@ -173,7 +173,7 @@ export function fetchCarrierCertifications(
 /** 审核通过或驳回企业认证。 */
 export function reviewCertification(
   accountId: number,
-  decision: '通过' | '驳回',
+  decision: '审核通过' | '审核不通过',
   reason: string,
 ): Promise<CertificationRecord> {
   return request.post<CertificationRecord>(

@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.exceptions import (
     DriverNotFoundError,
@@ -16,6 +16,7 @@ from app.schemas.exception import (
     HandlingIn,
     HandlingOut,
 )
+from app.services.notify import notify as _notify
 from app.services.vehicle import assert_vehicle_assignable
 
 _PRE_START_STATUSES = ("待装货",)
@@ -38,12 +39,18 @@ _TASK_SELECT = """
 """
 
 _ANOMALY_SELECT = """
-    SELECT a.*, t.task_no
+    SELECT a.id, a.anomaly_no, a.task_id, a.order_id, a.driver_account_id, a.kind,
+           a.detail, a.photos, a.occurred_at, a.started, a.actor, a.reason,
+           a.replaced_by, a.created_at, t.task_no
     FROM transport_anomalies a JOIN transport_tasks t ON t.id = a.task_id
 """
 
 _HANDLING_SELECT = """
-    SELECT h.*, t.task_no,
+    SELECT h.id, h.handling_no, h.anomaly_id, h.task_id, h.order_id, h.result,
+           h.detail, h.reason, h.actor_id, h.actor, h.before_driver_account_id,
+           h.before_vehicle_id, h.after_driver_account_id, h.after_vehicle_id,
+           h.before_deliver_at, h.after_deliver_at, h.order_status, h.task_status,
+           h.handled_at, h.replaced_by, h.created_at, t.task_no,
            odn.name AS before_driver_name, ndn.name AS after_driver_name,
            ov.plate_no AS before_vehicle_plate, nv.plate_no AS after_vehicle_plate
     FROM exception_handling_records h
@@ -56,7 +63,7 @@ _HANDLING_SELECT = """
 
 
 def _now_dt() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now()
 
 
 def _driver_task(conn: sqlite3.Connection, driver_id: int, task_id: int):
@@ -139,25 +146,6 @@ def _handling_out(row) -> HandlingOut:
     )
 
 
-def _notify(
-    conn: sqlite3.Connection,
-    recipient_id: int,
-    role: str,
-    kind: str,
-    title: str,
-    body: str,
-    related_id: int,
-    now: str,
-) -> None:
-    """在通知箱落一条站内通知。"""
-    conn.execute(
-        """INSERT INTO notifications
-           (recipient_id, recipient_role, kind, title, body, related_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (recipient_id, role, kind, title, body, related_id, now),
-    )
-
-
 def _set_occupancy(
     conn: sqlite3.Connection,
     driver_id: int,
@@ -223,6 +211,16 @@ def submit_anomaly(
         task = _driver_task(conn, driver_id, task_id)
         if task["status"] not in (*_PRE_START_STATUSES, *_IN_TRANSIT_STATUSES):
             raise ExceptionRuleError("任务当前状态不可上报在途异常")
+        # 互斥前置校验：触发器是 DB 兜底，这里先转成业务错误，避免 500
+        if task["order_status"] in ("取消处理中", "已取消", "已完成"):
+            raise ExceptionRuleError("订单当前状态不可上报在途异常，请先处理取消申请")
+        pending_cancel = conn.execute(
+            "SELECT 1 FROM cancel_applications "
+            "WHERE order_id = ? AND status = '待公司处理'",
+            (task["order_id"],),
+        ).fetchone()
+        if pending_cancel is not None:
+            raise ExceptionRuleError("订单存在待处理的取消申请，不能上报在途异常")
         if task["status"] in _PRE_START_STATUSES:
             started = 0
         elif task["status"] == "异常":
@@ -295,7 +293,9 @@ def handle_anomaly(
     try:
         task = _carrier_task(conn, carrier_id, task_id)
         anomaly = conn.execute(
-            "SELECT * FROM transport_anomalies WHERE id = ? AND task_id = ?",
+            "SELECT id, anomaly_no, task_id, order_id, driver_account_id, kind, detail, "
+            "photos, occurred_at, started, actor, reason, replaced_by, created_at "
+            "FROM transport_anomalies WHERE id = ? AND task_id = ?",
             (anomaly_id, task_id),
         ).fetchone()
         if anomaly is None:
@@ -344,10 +344,16 @@ def handle_anomaly(
         detail = (payload.detail or "").strip()
         if payload.result == _TERMINATE:
             order_status = "已取消"
-            # 任务状态枚举不含「已取消」，任务保持异常的终态；取消以订单状态与处理记录为准
+            # 任务状态枚举不含「已取消」，以 cancel_status 投影表达终态，避免占用进行中资源
             task_status = "已取消"
             conn.execute(
                 "UPDATE orders SET status = '已取消' WHERE id = ?", (task["order_id"],)
+            )
+            conn.execute(
+                "UPDATE transport_tasks SET cancel_status = '已取消' WHERE id = ?", (task_id,)
+            )
+            _set_occupancy(
+                conn, task["driver_account_id"], task["vehicle_id"], occupy=False
             )
         elif anomaly["started"] == 0:
             order_status = "已承接"

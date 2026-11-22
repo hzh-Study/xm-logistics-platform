@@ -93,13 +93,13 @@ class ReviewIn(BaseModel):
 
     model_config = STRICT
 
-    decision: Literal["通过", "驳回"]
+    decision: Literal["审核通过", "审核不通过"]
     reason: str = Field(default="", max_length=1000)
 
     @model_validator(mode="after")
     def reason_required_on_reject(self) -> "ReviewIn":
-        """驳回必须携带原因。"""
-        if self.decision == "驳回" and not self.reason:
+        """审核不通过必须携带原因。"""
+        if self.decision == "审核不通过" and not self.reason:
             raise ValueError("驳回原因必填")
         return self
 

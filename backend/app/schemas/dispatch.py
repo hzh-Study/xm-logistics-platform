@@ -1,6 +1,6 @@
 """派单、运输任务与司机确认的入参 / 出参模型。"""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -12,9 +12,8 @@ ISO_DT = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
 
 
 def _parse_dt(value: str) -> datetime:
-    """把 ISO 8601 字符串解析为带时区的 datetime，供区间比较。"""
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    """把 ISO 8601 字符串归一为本地 naive datetime，供区间比较。"""
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
 
 
 class DispatchCreateIn(BaseModel):

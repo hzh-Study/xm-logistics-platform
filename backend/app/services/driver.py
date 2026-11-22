@@ -1,7 +1,7 @@
 """司机业务：创建、身份绑定、三类状态管理与只读查询。"""
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.core.security import hash_password
 from app.exceptions import (
@@ -41,7 +41,7 @@ _DRIVER_SELECT = """
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now().isoformat()
 
 
 def _driver_row(conn: sqlite3.Connection, carrier_id: int, account_id: int):

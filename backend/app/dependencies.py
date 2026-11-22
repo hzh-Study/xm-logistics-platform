@@ -2,7 +2,7 @@
 
 import hmac
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -33,7 +33,7 @@ def _current_account(
     token = request.cookies.get("session_token")
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="未登录")
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now().isoformat()
     row = conn.execute(
         f"""SELECT {_ACCOUNT_COLUMNS}, s.csrf_token, s.expires_at
             FROM sessions s JOIN accounts a ON a.id = s.account_id
@@ -88,7 +88,7 @@ def verify_csrf(
     token = request.cookies.get("session_token")
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="未登录")
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now().isoformat()
     session = conn.execute(
         """SELECT csrf_token FROM sessions
            WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?""",
