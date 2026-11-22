@@ -85,9 +85,10 @@ onMounted(load)
         </template>
       </el-table-column>
       <el-table-column prop="created_at" label="发布时间" width="180" />
-      <el-table-column label="操作" width="90">
+      <el-table-column label="操作" width="130">
         <template #default="{ row }">
           <el-button type="primary" link @click="openDetail(row)">详情</el-button>
+          <el-button link @click="router.push(`/shipper/orders/${row.id}/progress`)">进度</el-button>
         </template>
       </el-table-column>
       <template #empty>

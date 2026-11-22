@@ -110,6 +110,14 @@ def _origin_allowed(origin: str, allowed: tuple[str, ...]) -> bool:
 CsrfDep = Annotated[None, Depends(verify_csrf)]
 
 
+def get_checkin_radius(request: Request) -> int:
+    """从应用配置读取发货地打卡允许半径（米）。"""
+    return request.app.state.settings.checkin_radius_m
+
+
+CheckinRadiusDep = Annotated[int, Depends(get_checkin_radius)]
+
+
 def require_active_carrier(account: CurrentAccountDep) -> UserOut:
     """承运业务门禁：账号正常且企业认证审核通过才放行。"""
     if account["role"] != "物流公司":

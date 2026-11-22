@@ -204,6 +204,11 @@ def migrate(conn: sqlite3.Connection) -> None:
 
             migrate_dispatch(conn)
             conn.execute("PRAGMA user_version = 9")
+        if version < 10:
+            from app.db.migrate_checkin import migrate_checkin
+
+            migrate_checkin(conn)
+            conn.execute("PRAGMA user_version = 10")
         if version < 15:
             from app.db.migrate_admin import migrate_admin
 
