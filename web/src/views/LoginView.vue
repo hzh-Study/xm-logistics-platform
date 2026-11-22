@@ -25,6 +25,18 @@ async function onSubmit(): Promise<void> {
   }
 }
 
+async function onRegister(): Promise<void> {
+  loading.value = true
+  try {
+    await auth.registerShipper(phone.value, password.value)
+    await router.replace('/shipper')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '注册失败')
+  } finally {
+    loading.value = false
+  }
+}
+
 function homeFor(role: string | null): string {
   const map: Record<string, string> = {
     货主: '/shipper',
@@ -56,6 +68,9 @@ function homeFor(role: string | null): string {
       </label>
       <el-button class="submit" type="primary" native-type="submit" :loading="loading">
         登录
+      </el-button>
+      <el-button class="submit" type="button" :loading="loading" @click="onRegister">
+        注册货主账号
       </el-button>
     </form>
   </main>
