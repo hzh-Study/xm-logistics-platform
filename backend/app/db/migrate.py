@@ -2,7 +2,7 @@
 
 import sqlite3
 
-LATEST_VERSION = 10
+LATEST_VERSION = 12
 
 _SCHEMA = [
     """
@@ -209,6 +209,12 @@ def migrate(conn: sqlite3.Connection) -> None:
 
             migrate_checkin(conn)
             conn.execute("PRAGMA user_version = 10")
+        # NOTE: v12 须排在 v11（在途异常）之后；合并 #12 时勿调换两个代码块的先后顺序。
+        if version < 12:
+            from app.db.migrate_signoff import migrate_signoff
+
+            migrate_signoff(conn)
+            conn.execute("PRAGMA user_version = 12")
         conn.commit()
     except Exception:
         conn.rollback()

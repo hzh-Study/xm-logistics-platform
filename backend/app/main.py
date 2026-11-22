@@ -20,6 +20,7 @@ from app.routers import (
     dispatch,
     driver,
     shipper,
+    signoff,
     vehicle,
     warehouse,
     workbench,
@@ -64,6 +65,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(checkin.driver_router)
     app.include_router(checkin.carrier_router)
     app.include_router(checkin.shipper_router)
+    app.include_router(signoff.driver_router)
+    app.include_router(signoff.carrier_router)
+    app.include_router(signoff.shipper_router)
     app.include_router(driver.carrier_router)
     app.include_router(driver.driver_router)
     app.include_router(vehicle.router)

@@ -5,6 +5,15 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.signoff import (
+    ArrivalCheckinOut,
+    ArrivalNoteOut,
+    SignoffConfirmationOut,
+    SignoffVoucherOut,
+    UnloadingAnomalyOut,
+    UnloadingPhotosOut,
+)
+
 STRICT = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
 PUBLIC = ConfigDict(extra="forbid")
 
@@ -199,3 +208,9 @@ class TaskProgressOut(BaseModel):
     loading_photos: list[LoadingPhotosOut]
     loading_anomalies: list[LoadingAnomalyOut]
     confirmation: DepartureConfirmationOut | None
+    arrival_checkins: list[ArrivalCheckinOut]
+    arrival_notes: list[ArrivalNoteOut]
+    unloading_photos: list[UnloadingPhotosOut]
+    unloading_anomalies: list[UnloadingAnomalyOut]
+    signoff_voucher: SignoffVoucherOut | None
+    signoff_confirmation: SignoffConfirmationOut | None

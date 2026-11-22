@@ -103,3 +103,11 @@ class CheckinRuleError(Exception):
         super().__init__(reason)
         self.reason = reason
 
+
+class SignoffRuleError(Exception):
+    """收货打卡 / 卸货 / 签收前置条件不满足；reason 对外可见。"""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
