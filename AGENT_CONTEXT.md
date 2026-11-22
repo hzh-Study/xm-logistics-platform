@@ -1,7 +1,7 @@
 # 项目上下文（交给 Agent 的说明文件）
 
 > 使用方式：把本文件提供给任意 Agent，它即可了解本项目的环境、技术栈和约定，无需再口头补充说明。
-> 本文中的项目指 `c:\Users\20992\Desktop\xm\k` 下的应用。
+> 本文中的项目指 `c:\Users\20992\Desktop\xm\logistics platform` 下的应用。
 
 ## 一、本地环境
 
