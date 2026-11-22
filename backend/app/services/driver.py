@@ -30,7 +30,10 @@ _DRIVER_SELECT = """
            dp.name, dp.id_number, dp.license_no, dp.license_type, dp.license_expiry,
            dp.availability, dp.employment, dp.departure_date,
            dp.binding_complete, dp.must_change_password,
-           cp.company_name
+           cp.company_name,
+           (SELECT v.plate_no FROM vehicles v
+            WHERE v.current_driver_id = a.id AND v.carrier_id = dp.carrier_id
+            ORDER BY v.id DESC LIMIT 1) AS current_vehicle_plate
     FROM accounts a
     JOIN driver_profiles dp ON dp.account_id = a.id
     LEFT JOIN carrier_profiles cp ON cp.account_id = dp.carrier_id
@@ -81,8 +84,8 @@ def _to_out(row) -> DriverOut:
         departure_date=row["departure_date"],
         binding_complete=bool(row["binding_complete"]),
         must_change_password=bool(row["must_change_password"]),
-        # 当前车辆 / 任务与历史任务数由派单域接入后从运输任务投影
-        current_vehicle="",
+        # 当前车辆从车辆域投影；任务与历史任务数由派单域接入后投影
+        current_vehicle=row["current_vehicle_plate"] or "",
         current_task="",
         historical_task_count=0,
         can_dispatch_new=(

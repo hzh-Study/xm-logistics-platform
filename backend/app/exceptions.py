@@ -47,3 +47,23 @@ class WarehouseNotFoundError(Exception):
 
 class OrderNotFoundError(Exception):
     """运输订单不存在，或不属于当前货主。"""
+
+
+class VehicleNotFoundError(Exception):
+    """车辆不存在，或不属于当前物流公司。"""
+
+
+class VehicleNotAssignableError(Exception):
+    """车辆状态不满足分配或派发新任务的条件。"""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+class VehicleOwnerDriverError(Exception):
+    """个人车辆必须关联所属物流公司名下的司机。"""
+
+
+class VehiclePlateTakenError(Exception):
+    """车牌号已被登记。"""
