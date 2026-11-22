@@ -16,6 +16,7 @@ from app.routers import (
     carrier,
     carrier_pool,
     cert_review,
+    dispatch,
     driver,
     shipper,
     vehicle,
@@ -57,6 +58,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(shipper.router)
     app.include_router(carrier.router)
     app.include_router(carrier_pool.router)
+    app.include_router(dispatch.carrier_router)
+    app.include_router(dispatch.driver_router)
     app.include_router(driver.carrier_router)
     app.include_router(driver.driver_router)
     app.include_router(vehicle.router)

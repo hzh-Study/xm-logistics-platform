@@ -78,3 +78,20 @@ class VehicleOwnerDriverError(Exception):
 
 class VehiclePlateTakenError(Exception):
     """车牌号已被登记。"""
+
+
+class DispatchRuleError(Exception):
+    """派单规则不满足；reason 为对外可见的具体原因。"""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+class TaskNotFoundError(Exception):
+    """运输任务不存在，或不属于当前主体。"""
+
+
+class TaskStateError(Exception):
+    """运输任务当前状态不允许该操作。"""
+

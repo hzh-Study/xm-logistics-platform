@@ -19,10 +19,12 @@ async function onLogout(): Promise<void> {
     </header>
     <main class="body">
       <h1 class="page-title">今日任务</h1>
-      <div class="empty-state">暂无运输任务</div>
+      <button class="task-entry" type="button" @click="router.push('/tasks')">
+        查看我的运输任务（含待确认）
+      </button>
     </main>
     <nav class="tabbar">
-      <button class="tab active" type="button">任务</button>
+      <button class="tab active" type="button" @click="router.push('/tasks')">任务</button>
       <button class="tab" type="button">运输记录</button>
       <button class="tab" type="button">费用</button>
     </nav>
@@ -67,13 +69,17 @@ async function onLogout(): Promise<void> {
   font-weight: 600;
 }
 
-.empty-state {
-  padding: var(--space-6);
-  text-align: center;
-  color: var(--color-text-muted);
+.task-entry {
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: var(--space-4);
+  font: inherit;
+  text-align: left;
+  color: var(--color-text);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
+  cursor: pointer;
 }
 
 .tabbar {
