@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# 本地数据与凭证
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# 前端
+node_modules/
+dist/
+.env.local
+
+# 临时草稿
+.scratch/
