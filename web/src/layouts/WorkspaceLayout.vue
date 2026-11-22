@@ -37,6 +37,8 @@ function menuFor(role: CurrentUser['role'] | null): { name: string; path: string
       { name: '运输订单查询', path: '/admin/orders' },
       { name: '运输任务查询', path: '/admin/tasks' },
       { name: '平台公告与通知', path: '/admin/announcements' },
+      { name: '平台异常管理', path: '/admin/platform-exceptions' },
+      { name: '车辆转籍', path: '/admin/vehicle-transfers' },
       { name: '货主认证审核', path: '/admin/shipper-certifications' },
       { name: '公司认证审核', path: '/admin/carriers' },
     ],

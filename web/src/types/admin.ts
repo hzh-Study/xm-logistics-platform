@@ -103,3 +103,67 @@ export interface PlatformNotice {
   published_at: string
   channel: string
 }
+
+/** 平台异常类别。 */
+export type PlatformExceptionCategory =
+  | '投诉'
+  | '订单纠纷'
+  | '公司违规'
+  | '司机违规'
+  | '车辆异常'
+  | '任务长期未完成'
+  | '费用纠纷'
+
+/** 平台异常处理结果。 */
+export type PlatformResult = '已处理' | '已调解' | '已处罚' | '已驳回' | '已归档'
+
+/** 一条平台异常登记记录（只读追加）。 */
+export interface PlatformException {
+  id: number
+  exception_no: string
+  category: PlatformExceptionCategory
+  subject: string
+  detail: string
+  subject_account_id: number | null
+  order_id: number | null
+  task_id: number | null
+  vehicle_id: number | null
+  actor: string
+  created_at: string
+}
+
+/** 一条平台异常处理记录：带 actor 角色、原因、结果与时间。 */
+export interface PlatformHandling {
+  id: number
+  handling_no: string
+  exception_id: number
+  result: PlatformResult
+  reason: string
+  detail: string
+  actor: string
+  actor_id: number
+  order_status: string | null
+  task_status: string | null
+  handled_at: string
+  created_at: string
+}
+
+/** 平台异常与全部追加处理记录的只读视图。 */
+export interface PlatformExceptionView {
+  exception: PlatformException
+  handling_records: PlatformHandling[]
+}
+
+/** 一条车辆转籍历史：保留转出 / 转入归属。 */
+export interface VehicleTransfer {
+  id: number
+  transfer_no: string
+  vehicle_id: number
+  plate_no: string
+  before_carrier_id: number
+  after_carrier_id: number
+  reason: string
+  actor: string
+  actor_id: number
+  created_at: string
+}

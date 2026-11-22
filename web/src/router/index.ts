@@ -157,6 +157,16 @@ const routes: RouteRecordRaw[] = [
         name: 'AdminAnnouncements',
         component: () => import('@/views/admin/AnnouncementsView.vue'),
       },
+      {
+        path: 'platform-exceptions',
+        name: 'AdminPlatformExceptions',
+        component: () => import('@/views/admin/PlatformExceptionsView.vue'),
+      },
+      {
+        path: 'vehicle-transfers',
+        name: 'AdminVehicleTransfers',
+        component: () => import('@/views/admin/VehicleTransfersView.vue'),
+      },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/login' },

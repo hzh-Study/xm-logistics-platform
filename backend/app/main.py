@@ -23,6 +23,7 @@ from app.routers import (
     driver,
     exception,
     expense,
+    platform_exception,
     shipper,
     signoff,
     vehicle,
@@ -85,6 +86,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(cert_review.router)
     app.include_router(admin.router)
     app.include_router(admin_platform.router)
+    app.include_router(platform_exception.router)
     app.include_router(warehouse.router)
     app.include_router(workbench.router)
     return app
