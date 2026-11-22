@@ -27,7 +27,7 @@ export function reviewCertification(
   reason: string,
 ): Promise<CertificationRecord> {
   return request.post<CertificationRecord>(
-    `/api/admin/carriers/${accountId}/certification/review`,
+    `/api/admin/carrier-certifications/${accountId}/review`,
     { decision, reason },
   )
 }
