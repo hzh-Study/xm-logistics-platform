@@ -33,6 +33,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/HomeView.vue'),
     meta: { requiresAuth: true },
   },
+  {
+    path: '/tasks',
+    name: 'DriverTasks',
+    component: () => import('@/views/TasksView.vue'),
+    meta: { requiresAuth: true },
+  },
   { path: '/:pathMatch(.*)*', redirect: '/login' },
 ]
 
