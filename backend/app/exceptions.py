@@ -49,6 +49,17 @@ class OrderNotFoundError(Exception):
     """运输订单不存在，或不属于当前货主。"""
 
 
+class PoolOrderNotFoundError(Exception):
+    """货源不存在，或已不在公共订单池中。"""
+
+
+class OrderNotAcceptableError(Exception):
+    """运输订单当前不可承接（已被承接，先到先得）。"""
+
+    def __init__(self) -> None:
+        super().__init__("订单已被承接")
+
+
 class VehicleNotFoundError(Exception):
     """车辆不存在，或不属于当前物流公司。"""
 

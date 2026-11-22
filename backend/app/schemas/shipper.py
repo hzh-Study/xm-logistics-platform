@@ -260,6 +260,8 @@ class OrderOut(BaseModel):
     shipper_id: int
     cargo_name: str
     status: str
+    carrier_id: int | None  # 承接物流公司账号 id，待承接时为空
+    accepted_at: str | None  # 承接时间，ISO 8601
     created_at: str
     cargo_type: str
     quantity: str
