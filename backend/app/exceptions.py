@@ -17,6 +17,10 @@ class CarrierNotFoundError(Exception):
     """物流公司账号不存在。"""
 
 
+class AccountNotFoundError(Exception):
+    """可处置账号不存在或角色不允许处置。"""
+
+
 class PhoneTakenError(Exception):
     """手机号已注册。"""
 

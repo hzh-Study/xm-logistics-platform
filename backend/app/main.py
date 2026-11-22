@@ -12,6 +12,7 @@ from app.db.seed import seed_admin
 from app.errors import register_error_handlers
 from app.routers import (
     admin,
+    admin_platform,
     auth,
     carrier,
     carrier_pool,
@@ -65,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(vehicle.router)
     app.include_router(cert_review.router)
     app.include_router(admin.router)
+    app.include_router(admin_platform.router)
     app.include_router(warehouse.router)
     app.include_router(workbench.router)
     return app
