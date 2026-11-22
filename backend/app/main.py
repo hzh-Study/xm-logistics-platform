@@ -14,6 +14,7 @@ from app.routers import (
     admin,
     auth,
     carrier,
+    cancel,
     carrier_pool,
     cert_review,
     checkin,
@@ -59,6 +60,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(app)
     app.include_router(auth.router)
     app.include_router(shipper.router)
+    app.include_router(cancel.shipper_router)
+    app.include_router(cancel.carrier_router)
     app.include_router(carrier.router)
     app.include_router(carrier_pool.router)
     app.include_router(dispatch.carrier_router)

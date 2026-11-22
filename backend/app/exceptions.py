@@ -119,3 +119,15 @@ class ExceptionRuleError(Exception):
         super().__init__(reason)
         self.reason = reason
 
+
+class CancelApplicationNotFoundError(Exception):
+    """取消申请不存在，或不属于当前物流公司。"""
+
+
+class CancelRuleError(Exception):
+    """订单取消前置条件不满足；reason 对外可见。"""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+

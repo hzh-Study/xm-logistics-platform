@@ -2,7 +2,7 @@
 
 import sqlite3
 
-LATEST_VERSION = 12
+LATEST_VERSION = 13
 
 _SCHEMA = [
     """
@@ -220,6 +220,11 @@ def migrate(conn: sqlite3.Connection) -> None:
 
             migrate_signoff(conn)
             conn.execute("PRAGMA user_version = 12")
+        if version < 13:
+            from app.db.migrate_cancel import migrate_cancel
+
+            migrate_cancel(conn)
+            conn.execute("PRAGMA user_version = 13")
         conn.commit()
     except Exception:
         conn.rollback()
