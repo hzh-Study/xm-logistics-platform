@@ -28,6 +28,7 @@ function menuFor(role: CurrentUser['role'] | null): { name: string; path: string
       { name: '取消申请处理', path: '/carrier/cancel-applications' },
       { name: '司机管理', path: '/carrier/drivers' },
       { name: '车辆管理', path: '/carrier/vehicles' },
+      { name: '费用审核', path: '/carrier/expenses' },
     ],
     管理员: [
       { name: '工作台', path: '/admin' },

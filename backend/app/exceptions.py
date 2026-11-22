@@ -131,3 +131,15 @@ class CancelRuleError(Exception):
         super().__init__(reason)
         self.reason = reason
 
+
+class ExpenseNotFoundError(Exception):
+    """报销费用不存在，或不属于当前主体。"""
+
+
+class ExpenseRuleError(Exception):
+    """报销费用提交 / 审核 / 支付前置条件不满足；reason 对外可见。"""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+

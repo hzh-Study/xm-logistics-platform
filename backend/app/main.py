@@ -21,6 +21,7 @@ from app.routers import (
     dispatch,
     driver,
     exception,
+    expense,
     shipper,
     signoff,
     vehicle,
@@ -72,6 +73,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(exception.driver_router)
     app.include_router(exception.carrier_router)
     app.include_router(exception.shipper_router)
+    app.include_router(expense.driver_router)
+    app.include_router(expense.carrier_router)
     app.include_router(signoff.driver_router)
     app.include_router(signoff.carrier_router)
     app.include_router(signoff.shipper_router)

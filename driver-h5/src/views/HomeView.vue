@@ -26,7 +26,7 @@ async function onLogout(): Promise<void> {
     <nav class="tabbar">
       <button class="tab active" type="button" @click="router.push('/tasks')">任务</button>
       <button class="tab" type="button">运输记录</button>
-      <button class="tab" type="button">费用</button>
+      <button class="tab" type="button" @click="router.push('/expenses')">费用</button>
     </nav>
   </div>
 </template>
