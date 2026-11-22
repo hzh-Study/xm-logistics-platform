@@ -4,7 +4,7 @@ import sqlite3
 
 _CARRIER_CERT_SCHEMA = [
     """
-    CREATE TABLE carrier_certifications (
+    CREATE TABLE IF NOT EXISTS carrier_certifications (
         id                INTEGER PRIMARY KEY,
         account_id        INTEGER NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
         kind              TEXT NOT NULL CHECK(kind IN ('提交','审核')), -- 记录类型：提交/审核
@@ -23,13 +23,13 @@ _CARRIER_CERT_SCHEMA = [
         created_at        TEXT NOT NULL             -- 创建时间，ISO 8601
     ) STRICT
     """,
-    "CREATE INDEX idx_carrier_cert_account ON carrier_certifications(account_id, id)",
+    "CREATE INDEX IF NOT EXISTS idx_carrier_cert_account ON carrier_certifications(account_id, id)",
     """
-    CREATE TRIGGER trg_carrier_cert_no_update BEFORE UPDATE ON carrier_certifications
+    CREATE TRIGGER IF NOT EXISTS trg_carrier_cert_no_update BEFORE UPDATE ON carrier_certifications
     BEGIN SELECT RAISE(ABORT, 'immutable history'); END
     """,
     """
-    CREATE TRIGGER trg_carrier_cert_no_delete BEFORE DELETE ON carrier_certifications
+    CREATE TRIGGER IF NOT EXISTS trg_carrier_cert_no_delete BEFORE DELETE ON carrier_certifications
     BEGIN SELECT RAISE(ABORT, 'immutable history'); END
     """,
 ]
