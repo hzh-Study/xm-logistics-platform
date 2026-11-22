@@ -62,15 +62,8 @@ export interface ShipperNotification {
   created_at: string
 }
 
-/** 运输订单最小出参。 */
-export interface Order {
-  id: number
-  order_no: string
-  shipper_id: number
-  cargo_name: string
-  status: string
-  created_at: string
-}
+/** 运输订单出参定义在订单领域模型中。 */
+export type { Order } from '@/types/order'
 
 /** 注册响应，与登录响应同形。 */
 export interface RegisterResult {

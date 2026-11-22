@@ -34,6 +34,16 @@ const routes: RouteRecordRaw[] = [
         name: 'ShipperWarehouses',
         component: () => import('@/views/shipper/WarehouseView.vue'),
       },
+      {
+        path: 'orders',
+        name: 'ShipperOrders',
+        component: () => import('@/views/shipper/OrderListView.vue'),
+      },
+      {
+        path: 'orders/new',
+        name: 'ShipperOrderPublish',
+        component: () => import('@/views/shipper/OrderPublishView.vue'),
+      },
     ],
   },
   {
