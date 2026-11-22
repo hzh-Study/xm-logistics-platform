@@ -1,3 +1,12 @@
+import type {
+  ArrivalCheckin,
+  ArrivalNote,
+  SignoffConfirmation,
+  SignoffVoucher,
+  UnloadingAnomaly,
+  UnloadingPhoto,
+} from '@/types/signoff'
+
 /** 发货地打卡记录；位置异常是告警而非驳回。 */
 export interface Checkin {
   id: number
@@ -68,4 +77,10 @@ export interface TaskProgress {
   loading_photos: LoadingPhoto[]
   loading_anomalies: LoadingAnomaly[]
   confirmation: DepartureConfirmation | null
+  arrival_checkins: ArrivalCheckin[]
+  arrival_notes: ArrivalNote[]
+  unloading_photos: UnloadingPhoto[]
+  unloading_anomalies: UnloadingAnomaly[]
+  signoff_voucher: SignoffVoucher | null
+  signoff_confirmation: SignoffConfirmation | null
 }

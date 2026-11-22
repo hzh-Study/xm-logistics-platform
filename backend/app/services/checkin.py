@@ -26,13 +26,21 @@ from app.schemas.checkin import (
     StartTransportIn,
     TaskProgressOut,
 )
+from app.schemas.signoff import (
+    ArrivalCheckinOut,
+    ArrivalNoteOut,
+    SignoffConfirmationOut,
+    SignoffVoucherOut,
+    UnloadingAnomalyOut,
+    UnloadingPhotosOut,
+)
 
 _LOADING_PHASES = ("装货前", "装货中", "装货完成")
 
 _TASK_SELECT = """
     SELECT t.id, t.task_no, t.order_id, o.order_no, t.status, t.carrier_id,
-           o.shipper_id, o.status AS order_status, o.ship_lat, o.ship_lon,
-           t.planned_load_at, t.planned_deliver_at
+           t.driver_account_id, o.shipper_id, o.status AS order_status, o.ship_lat, o.ship_lon,
+           o.recv_lat, o.recv_lon, t.planned_load_at, t.planned_deliver_at
     FROM transport_tasks t JOIN orders o ON o.id = t.order_id
 """
 
@@ -97,6 +105,30 @@ def _checkin_out(row, task_no: str) -> CheckinOut:
     if out_of_range:
         warning = f"当前定位超出发货地允许范围（{distance} 米），请提交位置异常说明。"
     return CheckinOut(
+        id=row["id"],
+        task_id=row["task_id"],
+        task_no=task_no,
+        latitude=row["latitude"],
+        longitude=row["longitude"],
+        arrived_at=row["arrived_at"],
+        photos=json.loads(row["photos"]),
+        notes=row["notes"],
+        position_status=row["position_status"],
+        distance_m=distance,
+        warning=warning,
+        exception_note_required=out_of_range,
+        created_at=row["created_at"],
+    )
+
+
+def _arrival_checkin_out(row, task_no: str) -> ArrivalCheckinOut:
+    """把收货地打卡行转为出参，并携带超范围告警。"""
+    distance = row["distance_m"]
+    out_of_range = row["position_status"] == "位置异常"
+    warning = ""
+    if out_of_range:
+        warning = f"当前定位超收货地允许范围（{distance} 米），请提交位置异常说明。"
+    return ArrivalCheckinOut(
         id=row["id"],
         task_id=row["task_id"],
         task_no=task_no,
@@ -218,6 +250,95 @@ def _progress(conn: sqlite3.Connection, task) -> TaskProgressOut:
             notes=confirmation_row["notes"],
             created_at=confirmation_row["created_at"],
         )
+    arrival_checkins = [
+        _arrival_checkin_out(row, fresh_task["task_no"])
+        for row in conn.execute(
+            """SELECT * FROM arrival_checkins
+               WHERE task_id = ? AND replaced_by IS NULL ORDER BY id ASC""",
+            (task_id,),
+        )
+    ]
+    arrival_notes = [
+        ArrivalNoteOut(
+            id=row["id"],
+            checkin_id=row["checkin_id"],
+            note=row["note"],
+            created_at=row["created_at"],
+        )
+        for row in conn.execute(
+            """SELECT id, checkin_id, note, created_at FROM arrival_exception_notes
+               WHERE replaced_by IS NULL AND checkin_id IN
+                 (SELECT id FROM arrival_checkins WHERE task_id = ?)
+               ORDER BY id ASC""",
+            (task_id,),
+        )
+    ]
+    unloading_photos = [
+        UnloadingPhotosOut(
+            id=row["id"],
+            task_id=row["task_id"],
+            phase=row["phase"],
+            paths=json.loads(row["paths"]),
+            created_at=row["created_at"],
+        )
+        for row in conn.execute(
+            """SELECT id, task_id, phase, paths, created_at FROM unloading_photos
+               WHERE task_id = ? AND replaced_by IS NULL ORDER BY id ASC""",
+            (task_id,),
+        )
+    ]
+    unloading_anomalies = [
+        UnloadingAnomalyOut(
+            id=row["id"],
+            task_id=row["task_id"],
+            kind=row["kind"],
+            detail=row["detail"],
+            photos=json.loads(row["photos"]),
+            created_at=row["created_at"],
+        )
+        for row in conn.execute(
+            """SELECT id, task_id, kind, detail, photos, created_at FROM unloading_anomalies
+               WHERE task_id = ? AND replaced_by IS NULL ORDER BY id ASC""",
+            (task_id,),
+        )
+    ]
+    voucher_row = conn.execute(
+        """SELECT * FROM signoff_vouchers
+           WHERE task_id = ? AND replaced_by IS NULL ORDER BY id DESC LIMIT 1""",
+        (task_id,),
+    ).fetchone()
+    voucher = None
+    if voucher_row is not None:
+        voucher = SignoffVoucherOut(
+            id=voucher_row["id"],
+            voucher_no=voucher_row["voucher_no"],
+            task_id=voucher_row["task_id"],
+            task_no=fresh_task["task_no"],
+            order_id=voucher_row["order_id"],
+            receiving_condition=voucher_row["receiving_condition"],
+            received_at=voucher_row["received_at"],
+            receiver_name=voucher_row["receiver_name"],
+            signature_photos=json.loads(voucher_row["signature_photos"]),
+            vouchers=json.loads(voucher_row["vouchers"]),
+            notes=voucher_row["notes"],
+            created_at=voucher_row["created_at"],
+        )
+    signoff_row = conn.execute(
+        """SELECT id, task_id, voucher_id, carrier_account_id, notes, created_at
+           FROM signoff_confirmations
+           WHERE task_id = ? AND replaced_by IS NULL ORDER BY id DESC LIMIT 1""",
+        (task_id,),
+    ).fetchone()
+    signoff_confirmation = None
+    if signoff_row is not None:
+        signoff_confirmation = SignoffConfirmationOut(
+            id=signoff_row["id"],
+            task_id=signoff_row["task_id"],
+            voucher_id=signoff_row["voucher_id"],
+            carrier_account_id=signoff_row["carrier_account_id"],
+            notes=signoff_row["notes"],
+            created_at=signoff_row["created_at"],
+        )
     return TaskProgressOut(
         task_id=task_id,
         task_no=fresh_task["task_no"],
@@ -233,6 +354,12 @@ def _progress(conn: sqlite3.Connection, task) -> TaskProgressOut:
         loading_photos=photos,
         loading_anomalies=anomalies,
         confirmation=confirmation,
+        arrival_checkins=arrival_checkins,
+        arrival_notes=arrival_notes,
+        unloading_photos=unloading_photos,
+        unloading_anomalies=unloading_anomalies,
+        signoff_voucher=voucher,
+        signoff_confirmation=signoff_confirmation,
     )
 
 
