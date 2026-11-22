@@ -24,6 +24,11 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, roles: ['货主'] },
     children: [
       { path: '', name: 'ShipperHome', component: () => import('@/views/shipper/HomeView.vue') },
+      {
+        path: 'certification',
+        name: 'ShipperCertification',
+        component: () => import('@/views/shipper/CertificationView.vue'),
+      },
     ],
   },
   {
@@ -42,6 +47,11 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, roles: ['管理员'] },
     children: [
       { path: '', name: 'AdminHome', component: () => import('@/views/admin/HomeView.vue') },
+      {
+        path: 'shipper-certifications',
+        name: 'AdminShipperCertifications',
+        component: () => import('@/views/admin/ShipperCertificationsView.vue'),
+      },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/login' },
