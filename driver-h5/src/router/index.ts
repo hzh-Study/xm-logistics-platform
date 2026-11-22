@@ -16,6 +16,18 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/LoginView.vue'),
   },
   {
+    path: '/onboarding',
+    name: 'Onboarding',
+    component: () => import('@/views/OnboardingView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/blocked',
+    name: 'Blocked',
+    component: () => import('@/views/BlockedView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/home',
     name: 'DriverHome',
     component: () => import('@/views/HomeView.vue'),
@@ -40,6 +52,21 @@ router.beforeEach(async (to) => {
   // 司机端仅允许司机角色进入，其他角色已登录也应退出
   if (to.meta.requiresAuth && auth.role && auth.role !== '司机') {
     return { name: 'Login' }
+  }
+  if (auth.isLoggedIn && auth.role === '司机') {
+    if (auth.blockedReason) {
+      return to.name === 'Blocked' ? true : { name: 'Blocked' }
+    }
+    if (auth.needsOnboarding) {
+      return to.name === 'Onboarding' ? true : { name: 'Onboarding' }
+    }
+    if (to.name === 'Onboarding' || to.name === 'Blocked') {
+      return { name: 'DriverHome' }
+    }
+  }
+  if (to.name === 'Login' && auth.isLoggedIn && auth.role === '司机') {
+    if (auth.blockedReason) return { name: 'Blocked' }
+    return { name: auth.needsOnboarding ? 'Onboarding' : 'DriverHome' }
   }
   return true
 })

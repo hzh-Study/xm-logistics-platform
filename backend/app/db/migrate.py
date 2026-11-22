@@ -2,7 +2,7 @@
 
 import sqlite3
 
-LATEST_VERSION = 3
+LATEST_VERSION = 7
 
 _SCHEMA = [
     """
@@ -116,6 +116,37 @@ _V2 = [
     "CREATE TRIGGER trg_shipper_review_no_delete BEFORE DELETE ON shipper_cert_reviews BEGIN SELECT RAISE(ABORT, 'immutable history'); END",
 ]
 
+# 司机创建与身份绑定（v7）：司机基本资料可改，身份与驾驶资格提交只读追加。
+_V7 = [
+    "-- 司机姓名\nALTER TABLE driver_profiles ADD COLUMN name TEXT NOT NULL DEFAULT ''",
+    "-- 身份证号\nALTER TABLE driver_profiles ADD COLUMN id_number TEXT NOT NULL DEFAULT ''",
+    "-- 准驾车型\nALTER TABLE driver_profiles ADD COLUMN license_type TEXT NOT NULL DEFAULT ''",
+    "-- 驾驶证有效期，ISO 8601\nALTER TABLE driver_profiles ADD COLUMN license_expiry TEXT NOT NULL DEFAULT ''",
+    "-- 接单可用性：可派单/任务占用中/暂停接单\nALTER TABLE driver_profiles ADD COLUMN availability TEXT NOT NULL DEFAULT '可派单' CHECK(availability IN ('可派单','任务占用中','暂停接单'))",
+    "-- 雇佣关系：在职/离职\nALTER TABLE driver_profiles ADD COLUMN employment TEXT NOT NULL DEFAULT '在职' CHECK(employment IN ('在职','离职'))",
+    "-- 离职日期，ISO 8601\nALTER TABLE driver_profiles ADD COLUMN departure_date TEXT",
+    "-- 是否强制修改初始密码\nALTER TABLE driver_profiles ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 1 CHECK(must_change_password IN (0,1))",
+    "-- 身份绑定是否完成\nALTER TABLE driver_profiles ADD COLUMN binding_complete INTEGER NOT NULL DEFAULT 0 CHECK(binding_complete IN (0,1))",
+    """
+    CREATE TABLE driver_identity_history (
+        id            INTEGER PRIMARY KEY,
+        account_id    INTEGER NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+        name          TEXT NOT NULL,  -- 姓名快照
+        id_number     TEXT NOT NULL,  -- 身份证号快照
+        license_no    TEXT NOT NULL,  -- 驾驶证号快照
+        license_type  TEXT NOT NULL,  -- 准驾车型快照
+        license_expiry TEXT NOT NULL, -- 驾驶证有效期快照，ISO 8601
+        reason        TEXT NOT NULL,  -- 提交或变更原因
+        actor         TEXT NOT NULL,  -- 记录发起角色
+        replaced_by   INTEGER REFERENCES driver_identity_history(id) ON DELETE RESTRICT, -- 本记录替代的前序记录
+        created_at    TEXT NOT NULL   -- 创建时间，ISO 8601
+    ) STRICT
+    """,
+    "CREATE INDEX idx_driver_identity_account ON driver_identity_history(account_id, id)",
+    "CREATE TRIGGER trg_driver_identity_no_update BEFORE UPDATE ON driver_identity_history BEGIN SELECT RAISE(ABORT, 'immutable history'); END",
+    "CREATE TRIGGER trg_driver_identity_no_delete BEFORE DELETE ON driver_identity_history BEGIN SELECT RAISE(ABORT, 'immutable history'); END",
+]
+
 _PROFILE_TABLES = {
     "货主": "shipper_profiles",
     "物流公司": "carrier_profiles",
@@ -144,6 +175,10 @@ def migrate(conn: sqlite3.Connection) -> None:
 
             migrate_carrier(conn)
             conn.execute("PRAGMA user_version = 3")
+        if version < 7:
+            for statement in _V7:
+                conn.execute(statement)
+            conn.execute("PRAGMA user_version = 7")
         conn.commit()
     except Exception:
         conn.rollback()

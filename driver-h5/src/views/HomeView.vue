@@ -14,7 +14,7 @@ async function onLogout(): Promise<void> {
 <template>
   <div class="driver-home">
     <header class="topbar">
-      <span>{{ auth.user?.phone }} · 司机</span>
+      <span>{{ auth.onboarding?.company_name || '司机' }} · {{ auth.user?.phone }}</span>
       <button class="logout" type="button" @click="onLogout">退出</button>
     </header>
     <main class="body">
