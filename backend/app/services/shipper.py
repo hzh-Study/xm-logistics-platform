@@ -3,13 +3,16 @@
 import json
 import sqlite3
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from app.core.security import hash_password
 from app.exceptions import (
     CertificationNotFoundError,
     CertificationStateError,
     NotPublishableError,
+    OrderNotFoundError,
     PhoneTakenError,
+    WarehouseNotFoundError,
 )
 from app.schemas.shipper import (
     AdminCertOut,
@@ -18,6 +21,9 @@ from app.schemas.shipper import (
     CertificationViewOut,
     NotificationOut,
     OrderOut,
+    PublishIn,
+    ReceivingSnapshotOut,
+    ShippingSnapshotOut,
 )
 
 _SUBMISSION_COLUMNS = (
@@ -272,10 +278,97 @@ def list_notifications(
     ]
 
 
+_ORDER_COLUMNS = (
+    "id, order_no, shipper_id, cargo_name, status, created_at, "
+    "cargo_type, quantity, weight, volume, packaging, cargo_photos, cargo_remarks, "
+    "ship_source, ship_warehouse_id, ship_name, ship_contact, ship_phone, "
+    "ship_province, ship_city, ship_district, ship_detail_address, ship_type, "
+    "recv_name, recv_contact, recv_phone, recv_province, recv_city, recv_district, "
+    "recv_detail_address, vehicle_type, vehicle_length, load_requirement, "
+    "cold_chain, rain_protection, enclosed_body, special_loading, "
+    "other_services, transport_remarks, quote_method, quote_amount_cents, "
+    "accept_bargain, quote_remarks"
+)
+
+
+def _escape_like(value: str) -> str:
+    """转义 LIKE 通配符，保持用户的字面匹配语义。"""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _cents_to_yuan(cents: int) -> str:
+    """库内分转换为 API 边界的元字符串。"""
+    return f"{cents // 100}.{cents % 100:02d}"
+
+
+def _to_out(row: sqlite3.Row) -> OrderOut:
+    """把订单行组装成出参，金额由分转为元，快照独立成对象。"""
+    return OrderOut(
+        id=row["id"],
+        order_no=row["order_no"],
+        shipper_id=row["shipper_id"],
+        cargo_name=row["cargo_name"],
+        status=row["status"],
+        created_at=row["created_at"],
+        cargo_type=row["cargo_type"],
+        quantity=row["quantity"],
+        weight=row["weight"],
+        volume=row["volume"],
+        packaging=row["packaging"],
+        cargo_photos=json.loads(row["cargo_photos"]),
+        cargo_remarks=row["cargo_remarks"],
+        shipping_snapshot=ShippingSnapshotOut(
+            source=row["ship_source"],
+            warehouse_id=row["ship_warehouse_id"],
+            name=row["ship_name"],
+            contact=row["ship_contact"],
+            phone=row["ship_phone"],
+            province=row["ship_province"],
+            city=row["ship_city"],
+            district=row["ship_district"],
+            detail_address=row["ship_detail_address"],
+            type=row["ship_type"],
+        ),
+        receiving_snapshot=ReceivingSnapshotOut(
+            name=row["recv_name"],
+            contact=row["recv_contact"],
+            phone=row["recv_phone"],
+            province=row["recv_province"],
+            city=row["recv_city"],
+            district=row["recv_district"],
+            detail_address=row["recv_detail_address"],
+        ),
+        vehicle_type=row["vehicle_type"],
+        vehicle_length=row["vehicle_length"],
+        load_requirement=row["load_requirement"],
+        cold_chain=bool(row["cold_chain"]),
+        rain_protection=bool(row["rain_protection"]),
+        enclosed_body=bool(row["enclosed_body"]),
+        special_loading=bool(row["special_loading"]),
+        other_services=row["other_services"],
+        transport_remarks=row["transport_remarks"],
+        quote_method=row["quote_method"],
+        quote_amount_yuan=_cents_to_yuan(row["quote_amount_cents"]),
+        accept_bargain=bool(row["accept_bargain"]),
+        quote_remarks=row["quote_remarks"],
+    )
+
+
+def _get_owned(conn: sqlite3.Connection, shipper_id: int, order_id: int) -> sqlite3.Row:
+    """按当前货主读取订单，非本人记录一律视为不存在。"""
+    row = conn.execute(
+        f"SELECT {_ORDER_COLUMNS} FROM orders WHERE id = ? AND shipper_id = ?",
+        (order_id, shipper_id),
+    ).fetchone()
+    if row is None:
+        raise OrderNotFoundError()
+    return row
+
+
 def publish_order(
-    conn: sqlite3.Connection, account_id: int, cargo_name: str
+    conn: sqlite3.Connection, account_id: int, data: PublishIn
 ) -> OrderOut:
-    """仅当认证已通过时创建运输订单，并落一条发布成功通知。"""
+    """认证通过后发布订单：固化收发快照，进入待承接并落发布成功通知。"""
     account = conn.execute(
         "SELECT auth_status FROM accounts WHERE id = ?", (account_id,)
     ).fetchone()
@@ -286,15 +379,102 @@ def publish_order(
     prefix = f"ORD-{now.strftime('%y%m%d')}"
     conn.execute("BEGIN IMMEDIATE")
     try:
+        if data.warehouse_id is not None:
+            warehouse = conn.execute(
+                """SELECT name, contact, phone, province, city, district,
+                          detail_address, type
+                   FROM warehouses
+                   WHERE id = ? AND shipper_id = ? AND status = '正常'""",
+                (data.warehouse_id, account_id),
+            ).fetchone()
+            if warehouse is None:
+                raise WarehouseNotFoundError()
+            ship_source = "仓库"
+            ship_warehouse_id: int | None = data.warehouse_id
+            ship_name = warehouse["name"]
+            ship_contact = warehouse["contact"]
+            ship_phone = warehouse["phone"]
+            ship_province = warehouse["province"]
+            ship_city = warehouse["city"]
+            ship_district = warehouse["district"]
+            ship_detail_address = warehouse["detail_address"]
+            ship_type = warehouse["type"]
+        else:
+            ship_source = "临时地址"
+            ship_warehouse_id = None
+            ship_name = data.shipping_name
+            ship_contact = data.shipping_contact
+            ship_phone = data.shipping_phone
+            ship_province = data.shipping_province
+            ship_city = data.shipping_city
+            ship_district = data.shipping_district
+            ship_detail_address = data.shipping_detail_address
+            ship_type = "临时地址"
+
         used = conn.execute(
             "SELECT COUNT(*) FROM orders WHERE order_no LIKE ?", (f"{prefix}-%",)
         ).fetchone()[0]
         order_no = f"{prefix}-{used + 1:04d}"
         created_at = now.isoformat()
+        quote_cents = int(Decimal(data.quote_amount_yuan or "0") * 100)
         cursor = conn.execute(
-            """INSERT INTO orders (order_no, shipper_id, cargo_name, status, created_at)
-               VALUES (?, ?, ?, '待承接', ?)""",
-            (order_no, account_id, cargo_name, created_at),
+            """INSERT INTO orders
+               (order_no, shipper_id, cargo_name, status, created_at,
+                cargo_type, quantity, weight, volume, packaging, cargo_photos,
+                cargo_remarks, ship_source, ship_warehouse_id, ship_name,
+                ship_contact, ship_phone, ship_province, ship_city, ship_district,
+                ship_detail_address, ship_type, recv_name, recv_contact,
+                recv_phone, recv_province, recv_city, recv_district,
+                recv_detail_address, vehicle_type, vehicle_length,
+                load_requirement, cold_chain, rain_protection, enclosed_body,
+                special_loading, other_services, transport_remarks, quote_method,
+                quote_amount_cents, accept_bargain, quote_remarks)
+               VALUES (?, ?, ?, '待承接', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                       ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                order_no,
+                account_id,
+                data.cargo_name,
+                created_at,
+                data.cargo_type,
+                data.quantity,
+                data.weight,
+                data.volume,
+                data.packaging,
+                json.dumps(data.cargo_photos, ensure_ascii=False),
+                data.cargo_remarks,
+                ship_source,
+                ship_warehouse_id,
+                ship_name,
+                ship_contact,
+                ship_phone,
+                ship_province,
+                ship_city,
+                ship_district,
+                ship_detail_address,
+                ship_type,
+                data.receiving_name,
+                data.receiving_contact,
+                data.receiving_phone,
+                data.receiving_province,
+                data.receiving_city,
+                data.receiving_district,
+                data.receiving_detail_address,
+                data.vehicle_type,
+                data.vehicle_length,
+                data.load_requirement,
+                int(data.cold_chain),
+                int(data.rain_protection),
+                int(data.enclosed_body),
+                int(data.special_loading),
+                data.other_services,
+                data.transport_remarks,
+                data.quote_method,
+                quote_cents,
+                int(data.accept_bargain),
+                data.quote_remarks,
+            ),
         )
         conn.execute(
             """INSERT INTO notifications
@@ -308,35 +488,64 @@ def publish_order(
             ),
         )
         conn.commit()
+        order_id = cursor.lastrowid
     except Exception:
         conn.rollback()
         raise
-    return OrderOut(
-        id=cursor.lastrowid,
-        order_no=order_no,
-        shipper_id=account_id,
-        cargo_name=cargo_name,
-        status="待承接",
-        created_at=created_at,
-    )
+    return _to_out(_get_owned(conn, account_id, order_id))
 
 
-def list_orders(conn: sqlite3.Connection, account_id: int) -> list[OrderOut]:
-    """货主读取自己的运输订单。"""
-    rows = conn.execute(
-        """SELECT id, order_no, shipper_id, cargo_name, status, created_at
-           FROM orders WHERE shipper_id = ? ORDER BY id DESC""",
-        (account_id,),
-    ).fetchall()
-    return [
-        OrderOut(
-            id=row["id"],
-            order_no=row["order_no"],
-            shipper_id=row["shipper_id"],
-            cargo_name=row["cargo_name"],
-            status=row["status"],
-            created_at=row["created_at"],
+def get_order(conn: sqlite3.Connection, shipper_id: int, order_id: int) -> OrderOut:
+    """货主读取自己订单的完整详情。"""
+    return _to_out(_get_owned(conn, shipper_id, order_id))
+
+
+def list_orders(
+    conn: sqlite3.Connection,
+    shipper_id: int,
+    order_no: str | None = None,
+    status: str | None = None,
+    cargo_name: str | None = None,
+    shipping_place: str | None = None,
+    receiving_place: str | None = None,
+    published_from: str | None = None,
+    published_to: str | None = None,
+) -> list[OrderOut]:
+    """货主按订单号 / 状态 / 时间 / 收发地 / 货物名筛选自己的订单。"""
+    clauses = ["shipper_id = ?"]
+    params: list[object] = [shipper_id]
+    if order_no:
+        clauses.append("order_no = ?")
+        params.append(order_no)
+    if status:
+        clauses.append("status = ?")
+        params.append(status)
+    if cargo_name:
+        clauses.append("cargo_name LIKE ? ESCAPE '\\'")
+        params.append(f"%{_escape_like(cargo_name)}%")
+    if shipping_place:
+        clauses.append(
+            "(ship_detail_address LIKE ? ESCAPE '\\' OR ship_city LIKE ? ESCAPE '\\')"
         )
-        for row in rows
-    ]
+        escaped = f"%{_escape_like(shipping_place)}%"
+        params.extend([escaped, escaped])
+    if receiving_place:
+        clauses.append(
+            "(recv_detail_address LIKE ? ESCAPE '\\' OR recv_city LIKE ? ESCAPE '\\')"
+        )
+        escaped = f"%{_escape_like(receiving_place)}%"
+        params.extend([escaped, escaped])
+    if published_from:
+        clauses.append("created_at >= ?")
+        params.append(published_from)
+    if published_to:
+        clauses.append("created_at <= ?")
+        params.append(published_to)
+    rows = conn.execute(
+        f"SELECT {_ORDER_COLUMNS} FROM orders WHERE "
+        + " AND ".join(clauses)
+        + " ORDER BY id DESC",
+        params,
+    ).fetchall()
+    return [_to_out(row) for row in rows]
 

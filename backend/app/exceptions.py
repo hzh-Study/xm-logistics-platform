@@ -43,3 +43,7 @@ class DriverBindingOrderError(Exception):
 
 class WarehouseNotFoundError(Exception):
     """仓库不存在，或不属于当前货主。"""
+
+
+class OrderNotFoundError(Exception):
+    """运输订单不存在，或不属于当前货主。"""

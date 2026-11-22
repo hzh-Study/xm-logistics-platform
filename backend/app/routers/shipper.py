@@ -1,5 +1,7 @@
 """货主路由：注册、认证资料与状态、通知、订单发布门禁。"""
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from app.config import Settings
@@ -7,7 +9,9 @@ from app.dependencies import CsrfDep, DbConnection, ShipperDep
 from app.exceptions import (
     CertificationStateError,
     NotPublishableError,
+    OrderNotFoundError,
     PhoneTakenError,
+    WarehouseNotFoundError,
 )
 from app.schemas.auth import LoginOut
 from app.schemas.shipper import (
@@ -95,18 +99,53 @@ def publish_order(
     conn: DbConnection,
     _csrf: CsrfDep,
 ) -> OrderOut:
-    """认证通过后发布运输订单。"""
+    """认证通过后发布运输订单，固化收发快照并冻结运费报价。"""
     try:
-        return shipper_service.publish_order(conn, user.id, payload.cargo_name)
+        return shipper_service.publish_order(conn, user.id, payload)
     except NotPublishableError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except WarehouseNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="仓库不存在")
 
 
 @router.get("/orders", response_model=list[OrderOut])
 def list_orders(
     user: ShipperDep,
     conn: DbConnection,
+    order_no: str | None = None,
+    status: Literal[
+        "待承接", "已承接", "运输中", "已完成", "取消处理中", "已取消", "异常处理中"
+    ]
+    | None = None,
+    cargo_name: str | None = None,
+    shipping_place: str | None = None,
+    receiving_place: str | None = None,
+    published_from: str | None = None,
+    published_to: str | None = None,
 ) -> list[OrderOut]:
-    """货主查看自己的运输订单。"""
-    return shipper_service.list_orders(conn, user.id)
+    """货主按订单号、状态、时间、收发地与货物名筛选自己的运输订单。"""
+    return shipper_service.list_orders(
+        conn,
+        user.id,
+        order_no,
+        status,
+        cargo_name,
+        shipping_place,
+        receiving_place,
+        published_from,
+        published_to,
+    )
+
+
+@router.get("/orders/{order_id}", response_model=OrderOut)
+def read_order(
+    order_id: int,
+    user: ShipperDep,
+    conn: DbConnection,
+) -> OrderOut:
+    """货主查看自己运输订单的完整详情。"""
+    try:
+        return shipper_service.get_order(conn, user.id, order_id)
+    except OrderNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="订单不存在")
 
