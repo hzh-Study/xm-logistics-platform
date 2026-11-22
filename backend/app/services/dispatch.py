@@ -3,7 +3,7 @@
 import json
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.exceptions import (
     DispatchRuleError,
@@ -22,6 +22,7 @@ from app.schemas.dispatch import (
     TaskOut,
 )
 from app.schemas.shipper import NotificationOut, OrderOut
+from app.services.notify import notify as _notify
 from app.services.shipper import ORDER_COLUMNS, to_order_out
 from app.services.vehicle import assert_vehicle_assignable
 
@@ -81,13 +82,12 @@ _TYPE_KEYWORDS = (("冷藏", "冷藏车"), ("厢式", "厢式货车"), ("高栏"
 
 
 def _now_dt() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now()
 
 
 def _parse_dt(value: str) -> datetime:
-    """把 ISO 8601 字符串解析为带时区 datetime，供区间重叠判断。"""
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    """把 ISO 8601 字符串归一为本地 naive datetime，供区间重叠判断。"""
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
 
 
 def _to_task_out(row) -> TaskOut:
@@ -219,7 +219,7 @@ def _active_task_for_order(conn: sqlite3.Connection, order_id: int, exclude_id: 
     sql = (
         "SELECT id FROM transport_tasks WHERE order_id = ? AND status IN ("
         + ",".join("?" for _ in _ACTIVE_STATUSES)
-        + ")"
+        + ") AND cancel_status != '已取消'"
     )
     params: list[object] = [order_id, *_ACTIVE_STATUSES]
     if exclude_id is not None:
@@ -242,7 +242,7 @@ def _time_conflict(
         "SELECT id, task_no, planned_load_at, planned_deliver_at FROM transport_tasks "
         "WHERE carrier_id = ? AND status IN ("
         + ",".join("?" for _ in _ACTIVE_STATUSES)
-        + ") AND (driver_account_id = ? OR vehicle_id = ?)"
+        + ") AND cancel_status != '已取消' AND (driver_account_id = ? OR vehicle_id = ?)"
     )
     params: list[object] = [carrier_id, *_ACTIVE_STATUSES, driver_id, vehicle_id]
     if exclude_id is not None:
@@ -379,25 +379,6 @@ def _append_history(
             actor,
             now_dt.isoformat(),
         ),
-    )
-
-
-def _notify(
-    conn: sqlite3.Connection,
-    recipient_id: int,
-    role: str,
-    kind: str,
-    title: str,
-    body: str,
-    related_id: int,
-    now: str,
-) -> None:
-    """在通知箱落一条站内通知。"""
-    conn.execute(
-        """INSERT INTO notifications
-           (recipient_id, recipient_role, kind, title, body, related_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (recipient_id, role, kind, title, body, related_id, now),
     )
 
 

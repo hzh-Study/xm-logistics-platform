@@ -3,7 +3,7 @@
 import json
 import math
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.exceptions import (
     CheckinRuleError,
@@ -26,6 +26,7 @@ from app.schemas.checkin import (
     StartTransportIn,
     TaskProgressOut,
 )
+from app.services.notify import notify as _notify
 from app.schemas.signoff import (
     ArrivalCheckinOut,
     ArrivalNoteOut,
@@ -45,13 +46,15 @@ _TASK_SELECT = """
 """
 
 _CHECKIN_SELECT = """
-    SELECT c.*, t.task_no
+    SELECT c.id, c.task_id, c.order_id, c.driver_account_id, c.latitude, c.longitude,
+           c.arrived_at, c.photos, c.notes, c.position_status, c.distance_m,
+           c.reason, c.actor, c.replaced_by, c.created_at, t.task_no
     FROM departure_checkins c JOIN transport_tasks t ON t.id = c.task_id
 """
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now().isoformat()
 
 
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -154,25 +157,6 @@ def _latest_checkin(conn: sqlite3.Connection, task_id: int):
     ).fetchone()
 
 
-def _notify(
-    conn: sqlite3.Connection,
-    recipient_id: int,
-    role: str,
-    kind: str,
-    title: str,
-    body: str,
-    related_id: int,
-    now: str,
-) -> None:
-    """在通知箱落一条站内通知。"""
-    conn.execute(
-        """INSERT INTO notifications
-           (recipient_id, recipient_role, kind, title, body, related_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (recipient_id, role, kind, title, body, related_id, now),
-    )
-
-
 def _progress(conn: sqlite3.Connection, task) -> TaskProgressOut:
     """把任务的打卡与装货记录汇总为进度视图。"""
     task_id = task["id"]
@@ -253,7 +237,10 @@ def _progress(conn: sqlite3.Connection, task) -> TaskProgressOut:
     arrival_checkins = [
         _arrival_checkin_out(row, fresh_task["task_no"])
         for row in conn.execute(
-            """SELECT * FROM arrival_checkins
+            """SELECT id, task_id, order_id, driver_account_id, latitude, longitude,
+                      arrived_at, photos, notes, position_status, distance_m,
+                      reason, actor, replaced_by, created_at
+               FROM arrival_checkins
                WHERE task_id = ? AND replaced_by IS NULL ORDER BY id ASC""",
             (task_id,),
         )
@@ -303,7 +290,10 @@ def _progress(conn: sqlite3.Connection, task) -> TaskProgressOut:
         )
     ]
     voucher_row = conn.execute(
-        """SELECT * FROM signoff_vouchers
+        """SELECT id, voucher_no, task_id, order_id, driver_account_id,
+                  receiving_condition, received_at, receiver_name, signature_photos,
+                  vouchers, notes, actor, replaced_by, created_at
+           FROM signoff_vouchers
            WHERE task_id = ? AND replaced_by IS NULL ORDER BY id DESC LIMIT 1""",
         (task_id,),
     ).fetchone()
@@ -623,17 +613,20 @@ def start_transport(
 def set_site_coordinate(
     conn: sqlite3.Connection, shipper_id: int, order_id: int, payload: SiteCoordinateIn
 ) -> SiteCoordinateOut:
-    """货主在起运前补录发货快照坐标，供位置打卡比对。"""
+    """遗留补录入台：仅在发布时未固化坐标时允许一次写入，不得重写已固化快照。"""
     conn.execute("BEGIN IMMEDIATE")
     try:
         order = conn.execute(
-            "SELECT id, status FROM orders WHERE id = ? AND shipper_id = ?",
+            "SELECT id, status, ship_lat, ship_lon FROM orders "
+            "WHERE id = ? AND shipper_id = ?",
             (order_id, shipper_id),
         ).fetchone()
         if order is None:
             raise OrderNotFoundError()
         if order["status"] not in ("待承接", "已承接"):
             raise CheckinRuleError("订单已起运，发货快照坐标不可修改")
+        if order["ship_lat"] is not None and order["ship_lon"] is not None:
+            raise CheckinRuleError("发货快照坐标已在发布时固化，不可重写")
         conn.execute(
             "UPDATE orders SET ship_lat = ?, ship_lon = ? WHERE id = ?",
             (payload.latitude, payload.longitude, order_id),

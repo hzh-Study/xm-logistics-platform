@@ -1,7 +1,7 @@
 """物流公司订单池业务：货源浏览、筛选、详情与先到先得承接。"""
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 
 from app.exceptions import OrderNotAcceptableError, PoolOrderNotFoundError
@@ -103,7 +103,7 @@ def accept_order(
     conn: sqlite3.Connection, order_id: int, carrier_id: int
 ) -> OrderOut:
     """先到先得承接：唯一归属当前物流公司，移出公共池并给货主落通知。"""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now().isoformat()
     conn.execute("BEGIN IMMEDIATE")
     try:
         order = conn.execute(

@@ -1,16 +1,22 @@
 """报销费用业务：按已完成运输任务提交、公司筛选审核、线下支付标记与驳回重提。"""
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 
 from app.exceptions import ExpenseNotFoundError, ExpenseRuleError, TaskStateError
 from app.schemas.expense import ExpenseIn, ExpenseOut, ExpenseReviewIn
 from app.services import checkin as checkin_service
+from app.services.notify import notify as _notify
+
+_EXPENSE_COLUMNS = (
+    "id, expense_no, task_id, order_id, driver_account_id, carrier_account_id, "
+    "expense_type, amount_cents, incurred_at, description, replaced_by, actor, created_at"
+)
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now().isoformat()
 
 
 def _cents_to_yuan(cents: int) -> str:
@@ -28,7 +34,9 @@ def _expense_no(conn: sqlite3.Connection, now: str) -> str:
 
 
 def _expense(conn: sqlite3.Connection, expense_id: int):
-    row = conn.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,)).fetchone()
+    row = conn.execute(
+        f"SELECT {_EXPENSE_COLUMNS} FROM expenses WHERE id = ?", (expense_id,)
+    ).fetchone()
     if row is None:
         raise ExpenseNotFoundError()
     return row
@@ -137,7 +145,7 @@ def submit_expense(
             f"运输任务 {task['task_no']} 司机提交一笔{payload.expense_type}报销费用 "
             f"{payload.amount_yuan} 元，请审核。"
         )
-        checkin_service._notify(
+        _notify(
             conn, task["carrier_id"], "物流公司", "费用提交", "费用提交", body, expense_id, now
         )
         conn.commit()
@@ -150,7 +158,8 @@ def submit_expense(
 def list_driver_expenses(conn: sqlite3.Connection, driver_id: int) -> list[ExpenseOut]:
     """司机查看自己提交的全部报销费用（含被驳回的历史记录）。"""
     rows = conn.execute(
-        "SELECT * FROM expenses WHERE driver_account_id = ? ORDER BY created_at DESC, id DESC",
+        f"SELECT {_EXPENSE_COLUMNS} FROM expenses "
+        "WHERE driver_account_id = ? ORDER BY created_at DESC, id DESC",
         (driver_id,),
     ).fetchall()
     return [_expense_out(conn, row) for row in rows]
@@ -159,7 +168,8 @@ def list_driver_expenses(conn: sqlite3.Connection, driver_id: int) -> list[Expen
 def get_driver_expense(conn: sqlite3.Connection, driver_id: int, expense_id: int) -> ExpenseOut:
     """司机读取本人一笔报销费用；他人费用视为不存在。"""
     row = conn.execute(
-        "SELECT * FROM expenses WHERE id = ? AND driver_account_id = ?", (expense_id, driver_id)
+        f"SELECT {_EXPENSE_COLUMNS} FROM expenses "
+        "WHERE id = ? AND driver_account_id = ?", (expense_id, driver_id)
     ).fetchone()
     if row is None:
         raise ExpenseNotFoundError()
@@ -179,7 +189,11 @@ def list_carrier_expenses(
     payment_status: str | None = None,
 ) -> list[ExpenseOut]:
     """物流公司按司机 / 任务 / 类型 / 提交时间 / 审核状态筛选本公司费用。"""
-    sql = "SELECT e.* FROM expenses e WHERE e.carrier_account_id = ?"
+    sql = (
+        "SELECT "
+        + ", ".join(f"e.{column}" for column in _EXPENSE_COLUMNS.split(", "))
+        + " FROM expenses e WHERE e.carrier_account_id = ?"
+    )
     params: list[object] = [carrier_id]
     if driver_account_id is not None:
         sql += " AND e.driver_account_id = ?"
@@ -217,7 +231,8 @@ def list_carrier_expenses(
 def get_carrier_expense(conn: sqlite3.Connection, carrier_id: int, expense_id: int) -> ExpenseOut:
     """物流公司读取本公司一笔报销费用；他公司费用视为不存在。"""
     row = conn.execute(
-        "SELECT * FROM expenses WHERE id = ? AND carrier_account_id = ?", (expense_id, carrier_id)
+        f"SELECT {_EXPENSE_COLUMNS} FROM expenses "
+        "WHERE id = ? AND carrier_account_id = ?", (expense_id, carrier_id)
     ).fetchone()
     if row is None:
         raise ExpenseNotFoundError()
@@ -254,7 +269,7 @@ def review_expense(
         body = f"您提交的费用 {row['expense_no']} 审核{'通过' if approved else '驳回'}。"
         if not approved:
             body += f"驳回原因：{payload.reason}"
-        checkin_service._notify(
+        _notify(
             conn, row["driver_account_id"], "司机", kind, kind, body, expense_id, now
         )
         conn.commit()
@@ -293,7 +308,7 @@ def mark_paid(conn: sqlite3.Connection, carrier_id: int, expense_id: int) -> Exp
             (expense_id, carrier_id, now),
         )
         body = f"您提交的费用 {row['expense_no']} 已由物流公司线下付款并标记已支付。"
-        checkin_service._notify(
+        _notify(
             conn, row["driver_account_id"], "司机", "费用已支付", "费用已支付", body,
             expense_id, now,
         )
@@ -369,7 +384,7 @@ def resubmit_expense(
             f"运输任务 {task['task_no']} 司机已重新提交报销费用 {expense_no}，"
             f"关联被驳回的原笔 {original['expense_no']}，请审核。"
         )
-        checkin_service._notify(
+        _notify(
             conn, original["carrier_account_id"], "物流公司", "费用提交", "费用提交", body,
             new_id, now,
         )

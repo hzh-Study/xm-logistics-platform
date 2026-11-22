@@ -1,14 +1,14 @@
 """仓库主数据业务：列表、搜索、创建、修改与状态流转。"""
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.exceptions import WarehouseNotFoundError
 from app.schemas.warehouse import WarehouseIn, WarehouseOut
 
 _WAREHOUSE_COLUMNS = (
     "id, shipper_id, name, contact, phone, province, city, district, "
-    "detail_address, type, remarks, status, created_at, updated_at"
+    "detail_address, type, remarks, latitude, longitude, status, created_at, updated_at"
 )
 
 
@@ -34,6 +34,8 @@ def _to_out(row: sqlite3.Row) -> WarehouseOut:
         detail_address=row["detail_address"],
         type=row["type"],
         remarks=row["remarks"],
+        latitude=row["latitude"],
+        longitude=row["longitude"],
         status=row["status"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -82,14 +84,15 @@ def create_warehouse(
     conn: sqlite3.Connection, shipper_id: int, data: WarehouseIn
 ) -> WarehouseOut:
     """为当前货主新增一个正常状态的仓库。"""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now().isoformat()
     conn.execute("BEGIN IMMEDIATE")
     try:
         cursor = conn.execute(
             """INSERT INTO warehouses
                (shipper_id, name, contact, phone, province, city, district,
-                detail_address, type, remarks, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '正常', ?, ?)""",
+                detail_address, type, remarks, latitude, longitude,
+                status, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '正常', ?, ?)""",
             (
                 shipper_id,
                 data.name,
@@ -101,6 +104,8 @@ def create_warehouse(
                 data.detail_address,
                 data.type,
                 data.remarks,
+                data.latitude,
+                data.longitude,
                 now,
                 now,
             ),
@@ -117,14 +122,14 @@ def update_warehouse(
     conn: sqlite3.Connection, shipper_id: int, warehouse_id: int, data: WarehouseIn
 ) -> WarehouseOut:
     """修改当前货主仓库的主数据，不影响状态与既有订单。"""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now().isoformat()
     conn.execute("BEGIN IMMEDIATE")
     try:
         _get_owned(conn, shipper_id, warehouse_id)
         conn.execute(
             """UPDATE warehouses SET name = ?, contact = ?, phone = ?,
                province = ?, city = ?, district = ?, detail_address = ?,
-               type = ?, remarks = ?, updated_at = ?
+               type = ?, remarks = ?, latitude = ?, longitude = ?, updated_at = ?
                WHERE id = ? AND shipper_id = ?""",
             (
                 data.name,
@@ -136,6 +141,8 @@ def update_warehouse(
                 data.detail_address,
                 data.type,
                 data.remarks,
+                data.latitude,
+                data.longitude,
                 now,
                 warehouse_id,
                 shipper_id,
@@ -152,7 +159,7 @@ def set_warehouse_status(
     conn: sqlite3.Connection, shipper_id: int, warehouse_id: int, status: str
 ) -> WarehouseOut:
     """启用或停用仓库；停用仅改状态，不物理删除、不回写历史订单。"""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now().isoformat()
     conn.execute("BEGIN IMMEDIATE")
     try:
         _get_owned(conn, shipper_id, warehouse_id)

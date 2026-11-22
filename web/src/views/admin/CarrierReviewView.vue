@@ -40,16 +40,16 @@ async function onSelect(row: CarrierSummary): Promise<void> {
   }
 }
 
-async function onReview(decision: '通过' | '驳回'): Promise<void> {
+async function onReview(decision: '审核通过' | '审核不通过'): Promise<void> {
   if (!selected.value) return
-  if (decision === '驳回' && !reason.value.trim()) {
+  if (decision === '审核不通过' && !reason.value.trim()) {
     ElMessage.error('驳回原因必填')
     return
   }
   acting.value = true
   try {
     await reviewCertification(selected.value.account_id, decision, reason.value.trim())
-    ElMessage.success(decision === '通过' ? '已通过认证' : '已驳回认证')
+    ElMessage.success(decision === '审核通过' ? '已通过认证' : '已驳回认证')
     await Promise.all([loadCarriers(), onSelect(selected.value)])
   } catch (error) {
     ElMessage.error(error instanceof ApiError ? error.message : '审核失败')
@@ -115,8 +115,8 @@ async function onToggleStatus(): Promise<void> {
           <el-input v-model="reason" type="textarea" maxlength="1000" rows="2" />
         </label>
         <div class="buttons">
-          <el-button type="success" :loading="acting" @click="onReview('通过')">通过</el-button>
-          <el-button type="danger" :loading="acting" @click="onReview('驳回')">驳回</el-button>
+          <el-button type="success" :loading="acting" @click="onReview('审核通过')">审核通过</el-button>
+          <el-button type="danger" :loading="acting" @click="onReview('审核不通过')">审核不通过</el-button>
           <el-button :loading="acting" @click="onToggleStatus">
             {{ selected.account_status === '已禁用' ? '恢复账号' : '禁用账号' }}
           </el-button>

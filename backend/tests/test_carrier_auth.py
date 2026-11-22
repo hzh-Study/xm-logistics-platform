@@ -157,14 +157,14 @@ def test_admin_approval_opens_carrier_business(client):
     account_id = login.json()["user"]["id"]
     _submit_cert(client, _csrf(login))
 
-    review = _review(client, _csrf(_admin_login(client)), account_id, "通过")
+    review = _review(client, _csrf(_admin_login(client)), account_id, "审核通过")
     assert review.status_code == 200
 
     _login(client, "carrier1")
     view = client.get("/api/carrier/certification").json()
     assert view["auth_status"] == "审核通过"
     assert view["latest"]["kind"] == "审核"
-    assert view["latest"]["decision"] == "通过"
+    assert view["latest"]["decision"] == "审核通过"
     assert client.get("/api/carrier/business-access").status_code == 200
     caps = client.get("/api/carrier/capabilities").json()
     assert all(
@@ -182,7 +182,7 @@ def test_admin_rejection_requires_reason(client):
     account_id = login.json()["user"]["id"]
     _submit_cert(client, _csrf(login))
 
-    bad = _review(client, _csrf(_admin_login(client)), account_id, "驳回")
+    bad = _review(client, _csrf(_admin_login(client)), account_id, "审核不通过")
     assert bad.status_code == 422
     assert "error" in bad.json()
 
@@ -194,14 +194,14 @@ def test_carrier_sees_rejection_reason_and_resubmits(client):
     _submit_cert(client, _csrf(login))
 
     admin_csrf = _csrf(_admin_login(client))
-    rejected = _review(client, admin_csrf, account_id, "驳回", "营业执照不清晰，请重新上传")
+    rejected = _review(client, admin_csrf, account_id, "审核不通过", "营业执照不清晰，请重新上传")
     assert rejected.status_code == 200
 
     _login(client, "carrier1")
     view = client.get("/api/carrier/certification").json()
     assert view["auth_status"] == "审核不通过"
     assert view["latest"]["kind"] == "审核"
-    assert view["latest"]["decision"] == "驳回"
+    assert view["latest"]["decision"] == "审核不通过"
     assert "营业执照" in view["latest"]["reason"]
     assert client.get("/api/carrier/business-access").status_code == 403
 
@@ -219,7 +219,7 @@ def test_non_admin_cannot_review(client):
     """物流公司角色调用管理员审核接口返回 404。"""
     login = _login_carrier(client)
     account_id = login.json()["user"]["id"]
-    resp = _review(client, _csrf(login), account_id, "通过")
+    resp = _review(client, _csrf(login), account_id, "审核通过")
     assert resp.status_code == 404
 
 
@@ -245,7 +245,7 @@ def test_admin_disable_and_restore_carrier(client):
     account_id = login.json()["user"]["id"]
     _submit_cert(client, _csrf(login))
     admin, admin_csrf = _admin_session(client)
-    assert _review(admin, admin_csrf, account_id, "通过").status_code == 200
+    assert _review(admin, admin_csrf, account_id, "审核通过").status_code == 200
 
     assert client.get("/api/carrier/business-access").status_code == 200
     disabled = _set_account_status(admin, admin_csrf, account_id, "已禁用")
@@ -286,17 +286,17 @@ def test_certification_history_is_append_only(client):
     account_id = login.json()["user"]["id"]
     _submit_cert(client, _csrf(login), note="第一轮")
     admin_csrf = _csrf(_admin_login(client))
-    _review(client, admin_csrf, account_id, "通过")
+    _review(client, admin_csrf, account_id, "审核通过")
 
     _login(client, "carrier1")
     _submit_cert(client, _csrf(_login(client, "carrier1")), note="第二轮")
     admin_csrf = _csrf(_admin_login(client))
-    _review(client, admin_csrf, account_id, "驳回", "资质文件过期")
+    _review(client, admin_csrf, account_id, "审核不通过", "资质文件过期")
 
     history = client.get(f"/api/admin/carriers/{account_id}/certifications").json()
     assert len(history) == 4
     assert [r["kind"] for r in history] == ["提交", "审核", "提交", "审核"]
-    assert [r["decision"] for r in history] == ["", "通过", "", "驳回"]
+    assert [r["decision"] for r in history] == ["", "审核通过", "", "审核不通过"]
     assert [r["actor"] for r in history] == [
         "物流公司", "管理员", "物流公司", "管理员",
     ]
@@ -309,7 +309,7 @@ def test_certification_history_is_append_only(client):
 def test_review_unknown_carrier_returns_404(client):
     """审核不存在的物流公司返回 404。"""
     admin_csrf = _csrf(_admin_login(client))
-    assert _review(client, admin_csrf, 999999, "通过").status_code == 404
+    assert _review(client, admin_csrf, 999999, "审核通过").status_code == 404
 
 
 def test_carrier_certification_endpoints_are_role_isolated(client):

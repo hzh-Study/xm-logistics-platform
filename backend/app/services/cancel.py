@@ -5,13 +5,14 @@
 """
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.exceptions import (
     CancelApplicationNotFoundError,
     CancelRuleError,
     OrderNotFoundError,
 )
+from app.services.notify import notify
 from app.schemas.cancel import (
     CancelApplyIn,
     CancelAuditOut,
@@ -21,8 +22,24 @@ from app.schemas.cancel import (
     CancelViewOut,
 )
 
+def _notify(
+    conn: sqlite3.Connection,
+    recipient_id: int,
+    role: str,
+    kind: str,
+    body: str,
+    related_id: int,
+    now: str,
+) -> None:
+    """沿用本域既有调用签名；具体实现走统一通知写入。"""
+    notify(conn, recipient_id, role, kind, kind, body, related_id, now)
+
+
 _APP_SELECT = """
-    SELECT a.*, o.order_no, o.status AS current_order_status
+    SELECT a.id, a.application_no, a.order_id, a.shipper_id, a.carrier_id, a.mode,
+           a.status, a.reason, a.handled_reason, a.before_status, a.after_status,
+           a.handled_by, a.handled_at, a.created_at, a.updated_at,
+           o.order_no, o.status AS current_order_status
     FROM cancel_applications a JOIN orders o ON o.id = a.order_id
 """
 
@@ -30,7 +47,7 @@ _IN_TRANSIT_TASK = ("运输中", "待签收", "异常")
 
 
 def _now() -> tuple[datetime, str]:
-    now_dt = datetime.now(timezone.utc)
+    now_dt = datetime.now()
     return now_dt, now_dt.isoformat()
 
 
@@ -72,24 +89,6 @@ def _decision(status: str, task) -> tuple[bool, str | None, str]:
     if status == "待承接":
         return True, "直接取消", ""
     return True, "公司确认", ""
-
-
-def _notify(
-    conn: sqlite3.Connection,
-    recipient_id: int,
-    role: str,
-    kind: str,
-    body: str,
-    related_id: int,
-    now: str,
-) -> None:
-    """在通知箱落一条站内通知。"""
-    conn.execute(
-        """INSERT INTO notifications
-           (recipient_id, recipient_role, kind, title, body, related_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (recipient_id, role, kind, kind, body, related_id, now),
-    )
 
 
 def _audit(
@@ -447,6 +446,18 @@ def agree_cancel(
             "UPDATE transport_tasks SET cancel_status = '已取消' WHERE order_id = ?",
             (app["order_id"],),
         )
+        # 取消生效后释放司机与车辆占用，避免资源被永久锁死
+        task = conn.execute(
+            "SELECT driver_account_id, vehicle_id FROM transport_tasks "
+            "WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+            (app["order_id"],),
+        ).fetchone()
+        if task is not None:
+            from app.services.exception import _set_occupancy
+
+            _set_occupancy(
+                conn, task["driver_account_id"], task["vehicle_id"], occupy=False
+            )
         _notify(
             conn,
             app["shipper_id"],

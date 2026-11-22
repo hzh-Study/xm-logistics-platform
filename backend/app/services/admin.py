@@ -1,7 +1,7 @@
 """管理员业务：物流公司认证审核与账号状态处置（不改写业务历史）。"""
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.exceptions import (
     AccountNotFoundError,
@@ -31,6 +31,7 @@ from app.schemas.carrier import (
 )
 from app.schemas.dispatch import TaskOut
 from app.schemas.shipper import OrderOut
+from app.services.cert_decision import to_api, to_db
 from app.services.dispatch import _TASK_SELECT, _to_task_out
 from app.services.shipper import ORDER_COLUMNS, to_order_out
 
@@ -100,7 +101,12 @@ def carrier_certifications(
         "WHERE account_id = ? ORDER BY id ASC",
         (account_id,),
     ).fetchall()
-    return [CertificationRecordOut(**dict(row)) for row in rows]
+    result = []
+    for row in rows:
+        data = dict(row)
+        data["decision"] = to_api(data["decision"])
+        result.append(CertificationRecordOut(**data))
+    return result
 
 
 def review_certification(
@@ -113,22 +119,22 @@ def review_certification(
         prior = conn.execute(
             "SELECT id, company_name, license_no, license_path, legal_person, "
             "contact_name, contact_phone, qualification_path, note "
-            "FROM carrier_certifications WHERE account_id = ? "
+            "FROM carrier_certifications WHERE account_id = ? AND replaced_by IS NULL "
             "ORDER BY id DESC LIMIT 1",
             (account_id,),
         ).fetchone()
         if prior is None:
             raise ValueError("尚未提交认证资料")
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now().isoformat()
         cursor = conn.execute(
             """INSERT INTO carrier_certifications
                (account_id, kind, decision, company_name, license_no, license_path,
                 legal_person, contact_name, contact_phone, qualification_path,
                 note, reason, actor, replaced_by, created_at)
-               VALUES (?, '审核', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '管理员', ?, ?)""",
+               VALUES (?, '审核', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '管理员', NULL, ?)""",
             (
                 account_id,
-                payload.decision,
+                to_db(payload.decision),
                 prior["company_name"],
                 prior["license_no"],
                 prior["license_path"],
@@ -138,13 +144,17 @@ def review_certification(
                 prior["qualification_path"],
                 prior["note"],
                 payload.reason,
-                prior["id"],
                 now,
             ),
         )
-        new_status = "审核通过" if payload.decision == "通过" else "审核不通过"
         conn.execute(
-            "UPDATE accounts SET auth_status = ? WHERE id = ?", (new_status, account_id)
+            "UPDATE carrier_certifications SET replaced_by = ? WHERE id = ?",
+            (cursor.lastrowid, prior["id"]),
+        )
+        # 对外审核结论与账号认证状态同词汇，无需双向 switch
+        conn.execute(
+            "UPDATE accounts SET auth_status = ? WHERE id = ?",
+            (payload.decision, account_id),
         )
         row = conn.execute(
             f"SELECT {_CERT_COLUMNS} FROM carrier_certifications WHERE id = ?",
@@ -154,7 +164,9 @@ def review_certification(
     except Exception:
         conn.rollback()
         raise
-    return CertificationRecordOut(**dict(row))
+    data = dict(row)
+    data["decision"] = to_api(data["decision"])
+    return CertificationRecordOut(**data)
 
 
 def set_account_status(
@@ -172,7 +184,7 @@ def set_account_status(
             conn.execute(
                 "UPDATE sessions SET revoked_at = ? "
                 "WHERE account_id = ? AND revoked_at IS NULL",
-                (datetime.now(timezone.utc).isoformat(), account_id),
+                (datetime.now().isoformat(), account_id),
             )
         conn.commit()
     except Exception:
@@ -401,7 +413,8 @@ def list_certifications(
                       (SELECT r.reason FROM shipper_cert_reviews r
                        WHERE r.certification_id = c.id ORDER BY r.id DESC LIMIT 1) AS reason
                FROM accounts a LEFT JOIN shipper_certifications c
-                 ON c.id = (SELECT MAX(id) FROM shipper_certifications WHERE account_id = a.id)
+                 ON c.id = (SELECT id FROM shipper_certifications
+                            WHERE account_id = a.id AND replaced_by IS NULL)
                WHERE a.role = '货主' ORDER BY a.id"""
         ).fetchall():
             items.append(
@@ -424,7 +437,8 @@ def list_certifications(
                       (SELECT r.reason FROM carrier_certifications r
                        WHERE r.id = c.id) AS reason
                FROM accounts a LEFT JOIN carrier_certifications c
-                 ON c.id = (SELECT MAX(id) FROM carrier_certifications WHERE account_id = a.id)
+                 ON c.id = (SELECT id FROM carrier_certifications
+                            WHERE account_id = a.id AND replaced_by IS NULL)
                WHERE a.role = '物流公司' ORDER BY a.id"""
         ).fetchall():
             items.append(
@@ -594,17 +608,17 @@ def unified_review(
 ) -> CertReviewOut:
     """统一入口：复用既有审核服务，其余类别追加留痕；驳回原因由入参模型强制。"""
     reason = (payload.reason or "").strip()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now().isoformat()
     if payload.category == "货主":
         from app.services.shipper import review_certification as shipper_review
 
         shipper_review(conn, payload.target_id, payload.decision, reason, admin_id)
     elif payload.category == "企业":
-        carrier_decision = "通过" if payload.decision == "审核通过" else "驳回"
+        # 企业认证入参与 GLOSSARY 对齐，库内字面量换算由唯一 helper 完成
         review_certification(
             conn,
             payload.target_id,
-            ReviewIn(decision=carrier_decision, reason=reason),
+            ReviewIn(decision=payload.decision, reason=reason),
         )
     elif payload.category in ("司机", "驾驶资格"):
         _review_account_backed(
@@ -648,7 +662,7 @@ def set_account_status_unified(
             conn.execute(
                 "UPDATE sessions SET revoked_at = ? "
                 "WHERE account_id = ? AND revoked_at IS NULL",
-                (datetime.now(timezone.utc).isoformat(), account_id),
+                (datetime.now().isoformat(), account_id),
             )
         conn.commit()
     except Exception:
@@ -668,7 +682,7 @@ def publish_announcement(
     conn: sqlite3.Connection, payload: AnnouncementIn, admin_id: int
 ) -> AnnouncementOut:
     """发布平台公告，仅写入公告表，不产生业务事件或站内通知。"""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now().isoformat()
     conn.execute("BEGIN IMMEDIATE")
     try:
         cursor = conn.execute(
@@ -704,7 +718,7 @@ def publish_notice(
     conn: sqlite3.Connection, payload: NoticeIn, admin_id: int
 ) -> NoticeOut:
     """发布平台通知，仅写入通知表，不产生业务事件或站内通知。"""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now().isoformat()
     conn.execute("BEGIN IMMEDIATE")
     try:
         cursor = conn.execute(

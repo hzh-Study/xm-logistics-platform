@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 
 from app.core.security import hash_password
@@ -40,7 +40,7 @@ def register_shipper(conn: sqlite3.Connection, phone: str, password: str) -> Non
         ).fetchone()
         if exists:
             raise PhoneTakenError()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now().isoformat()
         cursor = conn.execute(
             """INSERT INTO accounts
                (phone, role, account_status, auth_status, password_hash, created_at)
@@ -112,11 +112,18 @@ def submit_certification(
         raise CertificationStateError("当前认证状态不允许提交资料")
     conn.execute("BEGIN IMMEDIATE")
     try:
-        now = datetime.now(timezone.utc).isoformat()
-        conn.execute(
+        # 当前提交行为 replaced_by IS NULL；新提交追加后仅回填旧记录的前向指针
+        prior = conn.execute(
+            "SELECT id FROM shipper_certifications "
+            "WHERE account_id = ? AND replaced_by IS NULL ORDER BY id DESC LIMIT 1",
+            (account_id,),
+        ).fetchone()
+        now = datetime.now().isoformat()
+        cursor = conn.execute(
             """INSERT INTO shipper_certifications
-               (account_id, cert_type, name, id_number, contact_phone, documents, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (account_id, cert_type, name, id_number, contact_phone, documents,
+                replaced_by, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, NULL, ?)""",
             (
                 account_id,
                 data.cert_type,
@@ -127,6 +134,11 @@ def submit_certification(
                 now,
             ),
         )
+        if prior is not None:
+            conn.execute(
+                "UPDATE shipper_certifications SET replaced_by = ? WHERE id = ?",
+                (cursor.lastrowid, prior["id"]),
+            )
         conn.execute(
             "UPDATE accounts SET auth_status = '待审核' WHERE id = ?", (account_id,)
         )
@@ -146,7 +158,7 @@ def list_admin_certifications(conn: sqlite3.Connection) -> list[AdminCertOut]:
            FROM accounts a
            LEFT JOIN shipper_certifications c ON c.id = (
                SELECT id FROM shipper_certifications
-               WHERE account_id = a.id ORDER BY id DESC LIMIT 1
+               WHERE account_id = a.id AND replaced_by IS NULL
            )
            WHERE a.role = '货主' ORDER BY a.id"""
     ).fetchall()
@@ -210,7 +222,8 @@ def review_certification(
     if cert is None:
         raise CertificationNotFoundError()
     latest = conn.execute(
-        """SELECT MAX(id) FROM shipper_certifications WHERE account_id = ?""",
+        """SELECT id FROM shipper_certifications
+           WHERE account_id = ? AND replaced_by IS NULL""",
         (cert["account_id"],),
     ).fetchone()[0]
     if latest != certification_id:
@@ -225,7 +238,7 @@ def review_certification(
     if decision == "审核不通过" and not reason:
         raise CertificationStateError("驳回原因必填")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now().isoformat()
     kind, body = _notification_kind_and_body(decision, reason)
     conn.execute("BEGIN IMMEDIATE")
     try:
@@ -278,16 +291,27 @@ def list_notifications(
     ]
 
 
+# 待派单为订单状态机之外的只读投影：已承接且无有效运输任务时对外显示待派单。
+_DISPLAY_STATUS = (
+    "CASE WHEN status = '已承接' AND NOT EXISTS ("
+    "SELECT 1 FROM transport_tasks t WHERE t.order_id = orders.id "
+    "AND t.status IN ('待司机确认','待装货','运输中','待签收','待确认完成','异常')"
+    ") THEN '待派单' ELSE status END AS display_status"
+)
+
 ORDER_COLUMNS = (
     "id, order_no, shipper_id, cargo_name, status, created_at, "
     "cargo_type, quantity, weight, volume, packaging, cargo_photos, cargo_remarks, "
     "ship_source, ship_warehouse_id, ship_name, ship_contact, ship_phone, "
     "ship_province, ship_city, ship_district, ship_detail_address, ship_type, "
+    "ship_lat, ship_lon, "
     "recv_name, recv_contact, recv_phone, recv_province, recv_city, recv_district, "
-    "recv_detail_address, vehicle_type, vehicle_length, load_requirement, "
+    "recv_detail_address, recv_lat, recv_lon, vehicle_type, vehicle_length, load_requirement, "
     "cold_chain, rain_protection, enclosed_body, special_loading, "
-    "other_services, transport_remarks, quote_method, quote_amount_cents, "
-    "accept_bargain, quote_remarks, carrier_id, accepted_at"
+    "other_services, transport_remarks, special_cargo_qualification, "
+    "quote_method, quote_amount_cents, "
+    "accept_bargain, quote_remarks, carrier_id, accepted_at, "
+    + _DISPLAY_STATUS
 )
 
 
@@ -309,6 +333,7 @@ def to_order_out(row: sqlite3.Row) -> OrderOut:
         shipper_id=row["shipper_id"],
         cargo_name=row["cargo_name"],
         status=row["status"],
+        display_status=row["display_status"],
         carrier_id=row["carrier_id"],
         accepted_at=row["accepted_at"],
         created_at=row["created_at"],
@@ -330,6 +355,8 @@ def to_order_out(row: sqlite3.Row) -> OrderOut:
             district=row["ship_district"],
             detail_address=row["ship_detail_address"],
             type=row["ship_type"],
+            latitude=row["ship_lat"],
+            longitude=row["ship_lon"],
         ),
         receiving_snapshot=ReceivingSnapshotOut(
             name=row["recv_name"],
@@ -339,6 +366,8 @@ def to_order_out(row: sqlite3.Row) -> OrderOut:
             city=row["recv_city"],
             district=row["recv_district"],
             detail_address=row["recv_detail_address"],
+            latitude=row["recv_lat"],
+            longitude=row["recv_lon"],
         ),
         vehicle_type=row["vehicle_type"],
         vehicle_length=row["vehicle_length"],
@@ -349,6 +378,7 @@ def to_order_out(row: sqlite3.Row) -> OrderOut:
         special_loading=bool(row["special_loading"]),
         other_services=row["other_services"],
         transport_remarks=row["transport_remarks"],
+        special_cargo_qualification=row["special_cargo_qualification"],
         quote_method=row["quote_method"],
         quote_amount_yuan=_cents_to_yuan(row["quote_amount_cents"]),
         accept_bargain=bool(row["accept_bargain"]),
@@ -377,14 +407,14 @@ def publish_order(
     if account["auth_status"] != "审核通过":
         raise NotPublishableError("认证状态未达审核通过，不能发布运输订单")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now()
     prefix = f"ORD-{now.strftime('%y%m%d')}"
     conn.execute("BEGIN IMMEDIATE")
     try:
         if data.warehouse_id is not None:
             warehouse = conn.execute(
                 """SELECT name, contact, phone, province, city, district,
-                          detail_address, type
+                          detail_address, type, latitude, longitude
                    FROM warehouses
                    WHERE id = ? AND shipper_id = ? AND status = '正常'""",
                 (data.warehouse_id, account_id),
@@ -401,6 +431,9 @@ def publish_order(
             ship_district = warehouse["district"]
             ship_detail_address = warehouse["detail_address"]
             ship_type = warehouse["type"]
+            # 发布时固化仓库坐标；仓库坐标为空时回退到发布请求携带的坐标
+            ship_lat = warehouse["latitude"] if warehouse["latitude"] is not None else data.shipping_latitude
+            ship_lon = warehouse["longitude"] if warehouse["longitude"] is not None else data.shipping_longitude
         else:
             ship_source = "临时地址"
             ship_warehouse_id = None
@@ -412,6 +445,11 @@ def publish_order(
             ship_district = data.shipping_district
             ship_detail_address = data.shipping_detail_address
             ship_type = "临时地址"
+            ship_lat = data.shipping_latitude
+            ship_lon = data.shipping_longitude
+
+        recv_lat = data.receiving_latitude
+        recv_lon = data.receiving_longitude
 
         used = conn.execute(
             "SELECT COUNT(*) FROM orders WHERE order_no LIKE ?", (f"{prefix}-%",)
@@ -425,15 +463,16 @@ def publish_order(
                 cargo_type, quantity, weight, volume, packaging, cargo_photos,
                 cargo_remarks, ship_source, ship_warehouse_id, ship_name,
                 ship_contact, ship_phone, ship_province, ship_city, ship_district,
-                ship_detail_address, ship_type, recv_name, recv_contact,
-                recv_phone, recv_province, recv_city, recv_district,
-                recv_detail_address, vehicle_type, vehicle_length,
-                load_requirement, cold_chain, rain_protection, enclosed_body,
-                special_loading, other_services, transport_remarks, quote_method,
+                ship_detail_address, ship_type, ship_lat, ship_lon,
+                recv_name, recv_contact, recv_phone, recv_province, recv_city,
+                recv_district, recv_detail_address, recv_lat, recv_lon,
+                vehicle_type, vehicle_length, load_requirement, cold_chain,
+                rain_protection, enclosed_body, special_loading, other_services,
+                transport_remarks, special_cargo_qualification, quote_method,
                 quote_amount_cents, accept_bargain, quote_remarks)
                VALUES (?, ?, ?, '待承接', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                       ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 order_no,
                 account_id,
@@ -456,6 +495,8 @@ def publish_order(
                 ship_district,
                 ship_detail_address,
                 ship_type,
+                ship_lat,
+                ship_lon,
                 data.receiving_name,
                 data.receiving_contact,
                 data.receiving_phone,
@@ -463,6 +504,8 @@ def publish_order(
                 data.receiving_city,
                 data.receiving_district,
                 data.receiving_detail_address,
+                recv_lat,
+                recv_lon,
                 data.vehicle_type,
                 data.vehicle_length,
                 data.load_requirement,
@@ -472,6 +515,7 @@ def publish_order(
                 int(data.special_loading),
                 data.other_services,
                 data.transport_remarks,
+                data.special_cargo_qualification,
                 data.quote_method,
                 quote_cents,
                 int(data.accept_bargain),

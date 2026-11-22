@@ -1,7 +1,7 @@
 """车辆业务：登记、两个独立状态维度、公司车辆分配与可派发门禁。"""
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.exceptions import (
     DriverNotFoundError,
@@ -33,7 +33,7 @@ _VEHICLE_SELECT = """
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now().isoformat()
 
 
 def _vehicle_row(conn: sqlite3.Connection, carrier_id: int, vehicle_id: int):

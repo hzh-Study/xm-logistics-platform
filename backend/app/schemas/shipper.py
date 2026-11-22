@@ -8,6 +8,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 STRICT = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
 PUBLIC = ConfigDict(extra="forbid")
 
+# 特殊货物类型：平台要求随发布固化运输要求与资质信息，literal 匹配按子串判定。
+SPECIAL_CARGO_KEYWORDS = ("危险品", "危化品", "易燃易爆", "剧毒", "放射性")
+
+
+def is_special_cargo(cargo_type: str) -> bool:
+    """货物类型是否命中特殊货物关键词。"""
+    return any(keyword in cargo_type for keyword in SPECIAL_CARGO_KEYWORDS)
+
 
 class ShipperRegisterIn(BaseModel):
     """货主注册请求。"""
@@ -153,6 +161,9 @@ class PublishIn(BaseModel):
     shipping_city: str = Field(default="", max_length=64)
     shipping_district: str = Field(default="", max_length=64)
     shipping_detail_address: str = Field(default="", max_length=256)
+    # 发布时冻结的发货坐标；仓库发货优先取仓库坐标
+    shipping_latitude: float | None = Field(default=None, ge=-90, le=90)
+    shipping_longitude: float | None = Field(default=None, ge=-180, le=180)
 
     receiving_name: str = Field(default="", max_length=128)
     receiving_contact: str = Field(default="", max_length=64)
@@ -161,6 +172,9 @@ class PublishIn(BaseModel):
     receiving_city: str = Field(default="", max_length=64)
     receiving_district: str = Field(default="", max_length=64)
     receiving_detail_address: str = Field(default="", max_length=256)
+    # 发布时冻结的收货坐标
+    receiving_latitude: float | None = Field(default=None, ge=-90, le=90)
+    receiving_longitude: float | None = Field(default=None, ge=-180, le=180)
 
     vehicle_type: str = Field(default="", max_length=64)
     vehicle_length: str = Field(default="", max_length=64)
@@ -171,6 +185,8 @@ class PublishIn(BaseModel):
     special_loading: bool = False
     other_services: str = Field(default="", max_length=500)
     transport_remarks: str = Field(default="", max_length=500)
+    # 特殊货物的平台运输要求与资质信息，发布时随快照固化
+    special_cargo_qualification: str = Field(default="", max_length=1000)
 
     quote_method: Literal["固定", "可协商", "其他"] = "可协商"
     quote_amount_yuan: str | None = Field(
@@ -216,6 +232,20 @@ class PublishIn(BaseModel):
             raise ValueError("收货信息需填写名称、联系人、电话与完整地址")
         if self.quote_method == "固定" and not self.quote_amount_yuan:
             raise ValueError("固定报价必须填写金额")
+        # 坐标成对出现，避免固化出半截快照
+        if (self.shipping_latitude is None) != (self.shipping_longitude is None):
+            raise ValueError("发货坐标需同时填写纬度与经度")
+        if (self.receiving_latitude is None) != (self.receiving_longitude is None):
+            raise ValueError("收货坐标需同时填写纬度与经度")
+        # 特殊货物：必须同时给出平台运输要求与资质信息
+        if is_special_cargo(self.cargo_type):
+            missing_fields = []
+            if not self.transport_remarks.strip():
+                missing_fields.append("平台规定的运输要求")
+            if not self.special_cargo_qualification.strip():
+                missing_fields.append("资质信息")
+            if missing_fields:
+                raise ValueError("特殊货物必须填写：" + "、".join(missing_fields))
         return self
 
 
@@ -234,6 +264,8 @@ class ShippingSnapshotOut(BaseModel):
     district: str
     detail_address: str
     type: str
+    latitude: float | None
+    longitude: float | None
 
 
 class ReceivingSnapshotOut(BaseModel):
@@ -248,6 +280,8 @@ class ReceivingSnapshotOut(BaseModel):
     city: str
     district: str
     detail_address: str
+    latitude: float | None
+    longitude: float | None
 
 
 class OrderOut(BaseModel):
@@ -260,6 +294,7 @@ class OrderOut(BaseModel):
     shipper_id: int
     cargo_name: str
     status: str
+    display_status: str  # 只读投影：已承接且无有效任务时显示待派单
     carrier_id: int | None  # 承接物流公司账号 id，待承接时为空
     accepted_at: str | None  # 承接时间，ISO 8601
     created_at: str
@@ -281,6 +316,7 @@ class OrderOut(BaseModel):
     special_loading: bool
     other_services: str
     transport_remarks: str
+    special_cargo_qualification: str
     quote_method: str
     quote_amount_yuan: str
     accept_bargain: bool

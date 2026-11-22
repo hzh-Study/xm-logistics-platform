@@ -1,7 +1,7 @@
 """种子数据：幂等创建平台管理员账号。"""
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.core.security import hash_password
 from app.db.migrate import profile_table_for
@@ -17,7 +17,7 @@ def seed_admin(conn: sqlite3.Connection, phone: str, password: str) -> None:
             "SELECT 1 FROM accounts WHERE phone = ?", (phone,)
         ).fetchone()
         if not exists:
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now().isoformat()
             cursor = conn.execute(
                 """INSERT INTO accounts
                    (phone, role, account_status, auth_status, password_hash, created_at)

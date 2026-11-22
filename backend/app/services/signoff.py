@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.exceptions import (
     OrderNotFoundError,
@@ -26,18 +26,22 @@ from app.schemas.signoff import (
     UnloadingPhotosOut,
 )
 from app.services import checkin as checkin_service
+from app.services.notify import notify as _notify
 
 _UNLOADING_PHASES = ("卸货前", "卸货中", "卸货完成")
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now().isoformat()
 
 
 def _latest_arrival_checkin(conn: sqlite3.Connection, task_id: int):
     """取任务当前有效的收货地打卡（只读追加，replaced_by 为空）。"""
     return conn.execute(
-        """SELECT * FROM arrival_checkins
+        """SELECT id, task_id, order_id, driver_account_id, latitude, longitude,
+                  arrived_at, photos, notes, position_status, distance_m,
+                  reason, actor, replaced_by, created_at
+           FROM arrival_checkins
            WHERE task_id = ? AND replaced_by IS NULL ORDER BY id DESC LIMIT 1""",
         (task_id,),
     ).fetchone()
@@ -58,17 +62,20 @@ def _voucher_no(conn: sqlite3.Connection, now: str) -> str:
 def set_receiving_coordinate(
     conn: sqlite3.Connection, shipper_id: int, order_id: int, payload: ReceivingCoordinateIn
 ) -> ReceivingCoordinateOut:
-    """货主在运输前补录收货快照坐标，供司机到达打卡比对。"""
+    """遗留补录入台：仅在发布时未固化坐标时允许一次写入，不得重写已固化快照。"""
     conn.execute("BEGIN IMMEDIATE")
     try:
         order = conn.execute(
-            "SELECT id, status FROM orders WHERE id = ? AND shipper_id = ?",
+            "SELECT id, status, recv_lat, recv_lon FROM orders "
+            "WHERE id = ? AND shipper_id = ?",
             (order_id, shipper_id),
         ).fetchone()
         if order is None:
             raise OrderNotFoundError()
         if order["status"] not in ("待承接", "已承接"):
             raise SignoffRuleError("订单已起运，收货快照坐标不可修改")
+        if order["recv_lat"] is not None and order["recv_lon"] is not None:
+            raise SignoffRuleError("收货快照坐标已在发布时固化，不可重写")
         conn.execute(
             "UPDATE orders SET recv_lat = ?, recv_lon = ? WHERE id = ?",
             (payload.latitude, payload.longitude, order_id),
@@ -143,8 +150,8 @@ def submit_arrival_checkin(
         )
         kind = "收货地打卡位置异常" if out_of_range else "收货地打卡"
         body = f"运输任务 {task['task_no']} 司机已到达收货地打卡。" + warning
-        checkin_service._notify(conn, task["carrier_id"], "物流公司", kind, kind, body, task_id, now)
-        checkin_service._notify(conn, task["shipper_id"], "货主", kind, kind, body, task_id, now)
+        _notify(conn, task["carrier_id"], "物流公司", kind, kind, body, task_id, now)
+        _notify(conn, task["shipper_id"], "货主", kind, kind, body, task_id, now)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -186,8 +193,8 @@ def submit_arrival_note(
         note_id = cursor.lastrowid
         kind = "收货异常说明"
         body = f"运输任务 {task['task_no']} 司机已提交收货地位置异常说明：{payload.note}"
-        checkin_service._notify(conn, task["carrier_id"], "物流公司", kind, kind, body, task_id, now)
-        checkin_service._notify(conn, task["shipper_id"], "货主", kind, kind, body, task_id, now)
+        _notify(conn, task["carrier_id"], "物流公司", kind, kind, body, task_id, now)
+        _notify(conn, task["shipper_id"], "货主", kind, kind, body, task_id, now)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -259,8 +266,8 @@ def add_unloading_anomaly(
         anomaly_id = cursor.lastrowid
         kind = "卸货异常"
         body = f"运输任务 {task['task_no']} 上报卸货异常（{payload.kind}）：{payload.detail}"
-        checkin_service._notify(conn, task["carrier_id"], "物流公司", kind, kind, body, task_id, now)
-        checkin_service._notify(conn, task["shipper_id"], "货主", kind, kind, body, task_id, now)
+        _notify(conn, task["carrier_id"], "物流公司", kind, kind, body, task_id, now)
+        _notify(conn, task["shipper_id"], "货主", kind, kind, body, task_id, now)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -331,8 +338,8 @@ def submit_signoff(
         )
         kind = "签收资料提交"
         body = f"运输任务 {task['task_no']} 司机已提交签收凭证 {voucher_no}，请核对确认。"
-        checkin_service._notify(conn, task["carrier_id"], "物流公司", kind, kind, body, task_id, now)
-        checkin_service._notify(conn, driver_id, "司机", kind, kind, body, task_id, now)
+        _notify(conn, task["carrier_id"], "物流公司", kind, kind, body, task_id, now)
+        _notify(conn, driver_id, "司机", kind, kind, body, task_id, now)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -376,9 +383,9 @@ def carrier_confirm(
         )
         kind = "运输完成"
         body = f"运输任务 {task['task_no']} 已依据签收凭证 {voucher['voucher_no']} 确认完成。"
-        checkin_service._notify(conn, task["driver_account_id"], "司机", kind, kind, body, task_id, now)
-        checkin_service._notify(conn, task["carrier_id"], "物流公司", kind, kind, body, task_id, now)
-        checkin_service._notify(conn, task["shipper_id"], "货主", kind, kind, body, task_id, now)
+        _notify(conn, task["driver_account_id"], "司机", kind, kind, body, task_id, now)
+        _notify(conn, task["carrier_id"], "物流公司", kind, kind, body, task_id, now)
+        _notify(conn, task["shipper_id"], "货主", kind, kind, body, task_id, now)
         conn.commit()
     except Exception:
         conn.rollback()
