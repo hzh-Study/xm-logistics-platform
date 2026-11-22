@@ -46,6 +46,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/tasks/:taskId/exception',
+    name: 'DriverException',
+    component: () => import('@/views/ExceptionView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/tasks/:taskId/signoff',
     name: 'DriverSignoff',
     component: () => import('@/views/SignoffView.vue'),

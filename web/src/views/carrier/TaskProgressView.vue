@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getCarrierProgress } from '@/api/checkin'
 import { confirmSignoff } from '@/api/signoff'
 import type { TaskProgress } from '@/types/checkin'
 
 const route = useRoute()
+const router = useRouter()
 const taskId = Number(route.params.taskId)
 const progress = ref<TaskProgress | null>(null)
 const loading = ref(false)
@@ -61,6 +62,9 @@ async function onConfirm(): Promise<void> {
           <span>订单号：{{ progress.order_no }}</span>
         </div>
         <p class="muted">计划装货 {{ progress.planned_load_at }} → 计划送达 {{ progress.planned_deliver_at }}</p>
+        <el-button link type="primary" @click="router.push(`/carrier/tasks/${taskId}/exceptions`)">
+          查看并处理在途异常
+        </el-button>
       </el-card>
 
       <el-card class="panel" shadow="never">

@@ -209,6 +209,11 @@ def migrate(conn: sqlite3.Connection) -> None:
 
             migrate_checkin(conn)
             conn.execute("PRAGMA user_version = 10")
+        if version < 11:
+            from app.db.migrate_exception import migrate_exception
+
+            migrate_exception(conn)
+            conn.execute("PRAGMA user_version = 11")
         # NOTE: v12 须排在 v11（在途异常）之后；合并 #12 时勿调换两个代码块的先后顺序。
         if version < 12:
             from app.db.migrate_signoff import migrate_signoff
