@@ -49,6 +49,11 @@ const routes: RouteRecordRaw[] = [
         name: 'ShipperOrderProgress',
         component: () => import('@/views/shipper/OrderProgressView.vue'),
       },
+      {
+        path: 'orders/:orderId/cancel',
+        name: 'ShipperOrderCancel',
+        component: () => import('@/views/shipper/OrderCancelView.vue'),
+      },
     ],
   },
   {
@@ -82,6 +87,11 @@ const routes: RouteRecordRaw[] = [
         path: 'exceptions',
         name: 'CarrierExceptions',
         component: () => import('@/views/carrier/ExceptionTasksView.vue'),
+      },
+      {
+        path: 'cancel-applications',
+        name: 'CarrierCancelApplications',
+        component: () => import('@/views/carrier/CancelApplicationsView.vue'),
       },
       {
         path: 'tasks/:taskId/exceptions',
