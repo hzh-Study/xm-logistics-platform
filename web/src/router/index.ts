@@ -132,6 +132,31 @@ const routes: RouteRecordRaw[] = [
         name: 'AdminCarrierReview',
         component: () => import('@/views/admin/CarrierReviewView.vue'),
       },
+      {
+        path: 'certifications',
+        name: 'AdminCertifications',
+        component: () => import('@/views/admin/CertificationsView.vue'),
+      },
+      {
+        path: 'accounts',
+        name: 'AdminAccounts',
+        component: () => import('@/views/admin/AccountsView.vue'),
+      },
+      {
+        path: 'orders',
+        name: 'AdminOrders',
+        component: () => import('@/views/admin/OrdersView.vue'),
+      },
+      {
+        path: 'tasks',
+        name: 'AdminTasks',
+        component: () => import('@/views/admin/TasksView.vue'),
+      },
+      {
+        path: 'announcements',
+        name: 'AdminAnnouncements',
+        component: () => import('@/views/admin/AnnouncementsView.vue'),
+      },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/login' },

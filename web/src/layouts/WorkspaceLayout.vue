@@ -32,9 +32,13 @@ function menuFor(role: CurrentUser['role'] | null): { name: string; path: string
     ],
     管理员: [
       { name: '工作台', path: '/admin' },
+      { name: '统一认证审核', path: '/admin/certifications' },
+      { name: '平台主体查询', path: '/admin/accounts' },
+      { name: '运输订单查询', path: '/admin/orders' },
+      { name: '运输任务查询', path: '/admin/tasks' },
+      { name: '平台公告与通知', path: '/admin/announcements' },
       { name: '货主认证审核', path: '/admin/shipper-certifications' },
       { name: '公司认证审核', path: '/admin/carriers' },
-      { name: '订单管理', path: '/admin' },
     ],
     司机: [],
   }

@@ -1,19 +1,71 @@
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
+import { ElMessage } from 'element-plus'
+import * as adminApi from '@/api/admin'
+import type { AdminStats } from '@/types/admin'
 
-const auth = useAuthStore()
 const router = useRouter()
+const stats = ref<AdminStats | null>(null)
+
+onMounted(async () => {
+  try {
+    stats.value = await adminApi.fetchAdminStats()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '加载运营统计失败')
+  }
+})
 </script>
 
 <template>
   <section class="home">
-    <h1 class="page-title">工作台</h1>
-    <p class="page-note">{{ auth.user?.phone }} · 管理员</p>
-    <div class="panel">
-      <h2 class="panel-title">认证审核</h2>
-      <p class="panel-text">审核物流公司企业认证资料，驳回须填写公司可见的原因。</p>
-      <el-link type="primary" @click="router.push('/admin/carriers')">进入物流公司审核</el-link>
+    <h1 class="page-title">运营工作台</h1>
+
+    <h2 class="section-title">平台主体</h2>
+    <div class="cards">
+      <div class="card">
+        <span class="card-label">货主</span>
+        <span class="card-value">{{ stats?.shipper_count ?? '—' }}</span>
+      </div>
+      <div class="card">
+        <span class="card-label">物流公司</span>
+        <span class="card-value">{{ stats?.carrier_count ?? '—' }}</span>
+      </div>
+      <div class="card">
+        <span class="card-label">司机</span>
+        <span class="card-value">{{ stats?.driver_count ?? '—' }}</span>
+      </div>
+      <div class="card">
+        <span class="card-label">车辆</span>
+        <span class="card-value">{{ stats?.vehicle_count ?? '—' }}</span>
+      </div>
+    </div>
+
+    <h2 class="section-title">运输订单</h2>
+    <div class="cards">
+      <div class="card">
+        <span class="card-label">待承接</span>
+        <span class="card-value">{{ stats?.orders_pending_accept ?? '—' }}</span>
+      </div>
+      <div class="card">
+        <span class="card-label">运输中</span>
+        <span class="card-value">{{ stats?.orders_in_transit ?? '—' }}</span>
+      </div>
+      <div class="card">
+        <span class="card-label">已完成</span>
+        <span class="card-value">{{ stats?.orders_completed ?? '—' }}</span>
+      </div>
+      <div class="card">
+        <span class="card-label">异常处理中</span>
+        <span class="card-value">{{ stats?.orders_exception ?? '—' }}</span>
+      </div>
+    </div>
+
+    <div class="notice-line">
+      <span>待审核认证：{{ stats?.pending_certifications ?? '—' }} 项</span>
+      <el-button type="primary" link @click="router.push('/admin/certifications')">
+        前往统一审核
+      </el-button>
     </div>
   </section>
 </template>
@@ -24,31 +76,51 @@ const router = useRouter()
 }
 
 .page-title {
-  margin: 0;
+  margin: 0 0 var(--space-6);
   font-size: var(--font-size-lg);
   font-weight: 600;
 }
 
-.page-note {
-  margin: var(--space-1) 0 var(--space-6);
-  color: var(--color-text-muted);
+.section-title {
+  margin: var(--space-6) 0 var(--space-3);
+  font-size: var(--font-size-md);
+  font-weight: 600;
 }
 
-.panel {
-  padding: var(--space-6);
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
 }
 
-.panel-title {
-  margin: 0 0 var(--space-2);
-  font-size: var(--font-size-md);
+.card-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.card-value {
+  font-size: var(--font-size-xl);
   font-weight: 600;
 }
 
-.panel-text {
-  margin: 0;
-  color: var(--color-text-muted);
+.notice-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
 }
 </style>
