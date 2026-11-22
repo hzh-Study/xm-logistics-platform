@@ -147,3 +147,15 @@ class ExpenseRuleError(Exception):
         super().__init__(reason)
         self.reason = reason
 
+
+class PlatformExceptionNotFoundError(Exception):
+    """平台异常登记记录不存在。"""
+
+
+class VehicleTransferRuleError(Exception):
+    """车辆转籍前置条件不满足；reason 对外可见。"""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+

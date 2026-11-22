@@ -2,7 +2,7 @@
 
 import sqlite3
 
-LATEST_VERSION = 15
+LATEST_VERSION = 16
 
 _SCHEMA = [
     """
@@ -236,6 +236,12 @@ def migrate(conn: sqlite3.Connection) -> None:
 
             migrate_admin(conn)
             conn.execute("PRAGMA user_version = 15")
+        # NOTE: v16 须排在 v15（管理员平台）之后；迁移按版本号升序追加，勿调换顺序。
+        if version < 16:
+            from app.db.migrate_platform_exception import migrate_platform_exception
+
+            migrate_platform_exception(conn)
+            conn.execute("PRAGMA user_version = 16")
         conn.commit()
     except Exception:
         conn.rollback()

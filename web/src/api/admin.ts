@@ -7,10 +7,16 @@ import type {
   CertItem,
   CertReview,
   DriverSummary,
+  PlatformException,
+  PlatformExceptionCategory,
+  PlatformExceptionView,
+  PlatformHandling,
   PlatformNotice,
+  PlatformResult,
   ReviewDecision,
   ShipperSummary,
   VehicleSummary,
+  VehicleTransfer,
 } from '@/types/admin'
 import type {
   CarrierSummary,
@@ -185,6 +191,60 @@ export function setCarrierAccountStatus(
     `/api/admin/carriers/${accountId}/status`,
     { account_status: accountStatus },
   )
+}
+
+/** 按类别列出平台异常登记记录。 */
+export function fetchPlatformExceptions(
+  category?: PlatformExceptionCategory,
+): Promise<PlatformException[]> {
+  return request.get<PlatformException[]>(
+    `/api/admin/platform-exceptions${queryOf(category ? { category } : {})}`,
+  )
+}
+
+/** 管理员登记平台异常。 */
+export function createPlatformException(payload: {
+  category: PlatformExceptionCategory
+  subject: string
+  detail: string
+  subject_account_id?: number
+  order_id?: number
+  task_id?: number
+  vehicle_id?: number
+}): Promise<PlatformException> {
+  return request.post<PlatformException>('/api/admin/platform-exceptions', payload)
+}
+
+/** 读取平台异常及全部追加处理记录。 */
+export function fetchPlatformException(id: number): Promise<PlatformExceptionView> {
+  return request.get<PlatformExceptionView>(`/api/admin/platform-exceptions/${id}`)
+}
+
+/** 管理员追加异常处理记录。 */
+export function appendPlatformHandling(
+  exceptionId: number,
+  payload: { result: PlatformResult; reason: string; detail?: string },
+): Promise<PlatformHandling> {
+  return request.post<PlatformHandling>(
+    `/api/admin/platform-exceptions/${exceptionId}/handling`,
+    payload,
+  )
+}
+
+/** 列出车辆转籍历史，可按车辆筛选。 */
+export function fetchVehicleTransfers(vehicleId?: number): Promise<VehicleTransfer[]> {
+  return request.get<VehicleTransfer[]>(
+    `/api/admin/vehicle-transfers${queryOf(vehicleId ? { vehicle_id: vehicleId } : {})}`,
+  )
+}
+
+/** 执行车辆转籍（无进行中任务时放行）。 */
+export function transferVehicle(payload: {
+  vehicle_id: number
+  to_carrier_id: number
+  reason: string
+}): Promise<VehicleTransfer> {
+  return request.post<VehicleTransfer>('/api/admin/vehicle-transfers', payload)
 }
 
 /** 管理员列出货主认证记录。 */
