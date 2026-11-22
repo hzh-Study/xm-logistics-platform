@@ -10,7 +10,7 @@ from app.config import Settings
 from app.db.connection import initialize
 from app.db.seed import seed_admin
 from app.errors import register_error_handlers
-from app.routers import auth, cert_review, shipper, workbench
+from app.routers import admin, auth, carrier, cert_review, shipper, workbench
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -44,6 +44,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(app)
     app.include_router(auth.router)
     app.include_router(shipper.router)
+    app.include_router(carrier.router)
     app.include_router(cert_review.router)
+    app.include_router(admin.router)
     app.include_router(workbench.router)
     return app

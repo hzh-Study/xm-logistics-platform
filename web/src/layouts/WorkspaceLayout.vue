@@ -20,13 +20,15 @@ function menuFor(role: CurrentUser['role'] | null): { name: string; path: string
     ],
     物流公司: [
       { name: '工作台', path: '/carrier' },
+      { name: '企业认证', path: '/carrier/certification' },
       { name: '订单池', path: '/carrier' },
       { name: '司机管理', path: '/carrier' },
       { name: '车辆管理', path: '/carrier' },
     ],
     管理员: [
       { name: '工作台', path: '/admin' },
-      { name: '认证审核', path: '/admin/shipper-certifications' },
+      { name: '货主认证审核', path: '/admin/shipper-certifications' },
+      { name: '公司认证审核', path: '/admin/carriers' },
       { name: '订单管理', path: '/admin' },
     ],
     司机: [],

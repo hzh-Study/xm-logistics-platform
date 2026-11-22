@@ -138,6 +138,9 @@ def migrate(conn: sqlite3.Connection) -> None:
         if version < 2:
             for statement in _V2:
                 conn.execute(statement)
+            from app.db.migrate_carrier import migrate_carrier
+
+            migrate_carrier(conn)
             conn.execute("PRAGMA user_version = 2")
         conn.commit()
     except Exception:

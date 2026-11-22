@@ -9,6 +9,14 @@ class AccountUnavailableError(Exception):
     """账号状态不允许登录。"""
 
 
+class PhoneAlreadyRegisteredError(Exception):
+    """手机号已被注册。"""
+
+
+class CarrierNotFoundError(Exception):
+    """物流公司账号不存在。"""
+
+
 class PhoneTakenError(Exception):
     """手机号已注册。"""
 
