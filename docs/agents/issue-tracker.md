@@ -12,7 +12,16 @@ Issues and specs for this repo live as GitHub issues in `hzh-Study/xm-logistics-
 - **Count open blockers**: `gh api repos/<owner>/<repo>/issues/<n> --jq .issue_dependencies_summary.blocked_by` (open blockers only; 0 means startable). `gh issue view <n> --json blockedBy` also lists closed blockers, so filter it: `--jq '[.blockedBy.nodes[] | select(.state == "OPEN")] | length'`.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
-- **Close**: post the explanation with `gh issue comment <number> --body "..."`, then `gh issue close <number>`. On an already-closed issue, `gh issue close --comment` drops the comment and still exits 0.
+- **Close**: post the explanation with `gh issue comment <number> --body "..."`, then `gh issue close <number>`. On an already-closed issue, `gh issue close --comment` drops the comment and still exits 0. **Closing does NOT tick the body's `- [ ]` acceptance checkboxes** — a user seeing "Closed" with empty checkboxes reads it as unfinished. Before closing, PATCH the body to replace every `- [ ]` with `- [x]`: `gh api --method PATCH repos/<owner>/<repo>/issues/<n> --input -` with payload `{"body":"<body with - [x]>"}` (read the original body first with `gh api repos/<owner>/<repo>/issues/<n> --jq .body`). Do the same for any local gitignored ticket drafts, keeping tracker and local identical. VERIFY as closing evidence: print each ticket's `state` + `stateReason` + unchecked count, which must be `CLOSED` / `COMPLETED` / `0`.
+
+### Verified `gh` field shapes (avoid guessing)
+
+These tripped up past runs — use the exact shape:
+- Issue state from `gh api` is **lowercase** (`closed`), not `CLOSED`; normalize in comparisons. `stateReason` is `completed`.
+- `gh pr view --json`: `state` is `MERGED`/`OPEN` (not a boolean `merged`); merge commit is `.mergeCommit.oid`, time is `.mergedAt`. `closingIssuesReferences` is an object: `.closingIssuesReferences.nodes[].number`.
+- `gh pr checks` exits non-zero while any check is pending and prints a header line — pipe to a file or use `gh api repos/{owner}/{repo}/actions/runs/<id> --jq '{status,conclusion}'` for a clean machine-readable status.
+- To get a body verbatim use `gh api repos/<owner>/<repo>/issues/<n> --jq .body` (not `gh issue view --json body`, which can escape newlines).
+- Always pass `--jq` filters that reference fields you confirmed exist; an unknown field errors instead of returning null.
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
