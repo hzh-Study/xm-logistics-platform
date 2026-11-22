@@ -49,7 +49,6 @@ _CANCEL_SCHEMA = [
     "-- 取消申请只追加、不物理删除；状态沿生命周期更新\nCREATE TRIGGER IF NOT EXISTS trg_cancel_apps_no_delete BEFORE DELETE ON cancel_applications BEGIN SELECT RAISE(ABORT, 'cancel application is read-only for deletion'); END",
     "CREATE TRIGGER IF NOT EXISTS trg_cancel_audit_no_update BEFORE UPDATE ON cancel_audit BEGIN SELECT RAISE(ABORT, 'immutable history'); END",
     "CREATE TRIGGER IF NOT EXISTS trg_cancel_audit_no_delete BEFORE DELETE ON cancel_audit BEGIN SELECT RAISE(ABORT, 'immutable history'); END",
-    "-- 状态类投影：取消中的任务在任务侧留一列，不改 transport_tasks.status 枚举\nALTER TABLE transport_tasks ADD COLUMN cancel_status TEXT NOT NULL DEFAULT '' CHECK(cancel_status IN ('','取消中','已取消'))",
     """
     CREATE TRIGGER IF NOT EXISTS trg_cancel_exception_exclusive
     BEFORE UPDATE OF status ON orders
@@ -73,3 +72,10 @@ def migrate_cancel(conn: sqlite3.Connection) -> None:
     """在已开启的事务内创建取消申请表、审计表、索引与互斥触发器。"""
     for statement in _CANCEL_SCHEMA:
         conn.execute(statement)
+    # 状态类投影：取消中的任务在任务侧留一列，不改 transport_tasks.status 枚举
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(transport_tasks)")}
+    if "cancel_status" not in columns:
+        conn.execute(
+            "ALTER TABLE transport_tasks ADD COLUMN cancel_status TEXT NOT NULL "
+            "DEFAULT '' CHECK(cancel_status IN ('','取消中','已取消'))"
+        )
