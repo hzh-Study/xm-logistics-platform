@@ -4,8 +4,9 @@ import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { useAuthStore } from '@/stores/auth'
 
-const phone = ref('')
-const password = ref('')
+// 开发模式预填本地账号，生产构建留空由用户输入
+const phone = ref(import.meta.env.DEV ? (import.meta.env.VITE_DEV_PHONE ?? '') : '')
+const password = ref(import.meta.env.DEV ? (import.meta.env.VITE_DEV_PASSWORD ?? '') : '')
 const loading = ref(false)
 const auth = useAuthStore()
 const router = useRouter()

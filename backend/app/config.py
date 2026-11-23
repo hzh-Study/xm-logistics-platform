@@ -18,6 +18,8 @@ class Settings:
     session_ttl_seconds: int = 8 * 3600
     seed_admin_phone: str = "13800138000"
     seed_admin_password: str = ""
+    seed_dev_accounts: bool = False
+    dev_password: str = ""
     checkin_radius_m: int = 1000
 
     @classmethod
@@ -31,5 +33,7 @@ class Settings:
             cookie_secure=os.getenv("COOKIE_SECURE", "1") == "1",
             seed_admin_phone=os.getenv("SEED_ADMIN_PHONE", cls.seed_admin_phone),
             seed_admin_password=os.getenv("SEED_ADMIN_PASSWORD", ""),
+            seed_dev_accounts=os.getenv("SEED_DEV_ACCOUNTS", "0") == "1",
+            dev_password=os.getenv("SEED_DEV_PASSWORD", ""),
             checkin_radius_m=int(os.getenv("CHECKIN_RADIUS_M", str(cls.checkin_radius_m))),
         )

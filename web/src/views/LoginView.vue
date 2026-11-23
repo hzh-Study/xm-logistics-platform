@@ -5,10 +5,14 @@ import { ElMessage } from 'element-plus'
 import { registerCarrier } from '@/api/carrier'
 import { useAuthStore } from '@/stores/auth'
 
-const phone = ref('')
-const password = ref('')
+type RegisterRole = '货主' | '物流公司'
+
+// 开发模式预填本地账号，生产构建留空由用户输入
+const phone = ref(import.meta.env.DEV ? (import.meta.env.VITE_DEV_PHONE ?? '') : '')
+const password = ref(import.meta.env.DEV ? (import.meta.env.VITE_DEV_PASSWORD ?? '') : '')
 const loading = ref(false)
 const showRegister = ref(false)
+const registerRole = ref<RegisterRole>('货主')
 const regPhone = ref('')
 const regPassword = ref('')
 const regCompany = ref('')
@@ -31,25 +35,18 @@ async function onSubmit(): Promise<void> {
   }
 }
 
-async function onRegisterShipper(): Promise<void> {
-  loading.value = true
-  try {
-    await auth.registerShipper(phone.value, password.value)
-    await router.replace('/shipper')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '注册失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-async function onRegisterCarrier(): Promise<void> {
+async function onRegister(): Promise<void> {
   registering.value = true
   try {
-    await registerCarrier(regPhone.value, regPassword.value, regCompany.value)
-    await auth.login(regPhone.value, regPassword.value)
-    ElMessage.success('注册成功，请提交企业认证资料')
-    await router.replace('/carrier/certification')
+    if (registerRole.value === '货主') {
+      await auth.registerShipper(regPhone.value, regPassword.value)
+      await router.replace('/shipper')
+    } else {
+      await registerCarrier(regPhone.value, regPassword.value, regCompany.value)
+      await auth.login(regPhone.value, regPassword.value)
+      ElMessage.success('注册成功，请提交企业认证资料')
+      await router.replace('/carrier/certification')
+    }
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '注册失败')
   } finally {
@@ -89,15 +86,18 @@ function homeFor(role: string | null): string {
       <el-button class="submit" type="primary" native-type="submit" :loading="loading">
         登录
       </el-button>
-      <el-button class="submit" type="button" :loading="loading" @click="onRegisterShipper">
-        注册货主账号
-      </el-button>
       <button class="switch" type="button" @click="showRegister = !showRegister">
-        {{ showRegister ? '收起物流公司注册' : '物流公司注册' }}
+        {{ showRegister ? '返回登录' : '注册新账号' }}
       </button>
 
       <div v-if="showRegister" class="register">
-        <p class="register-title">物流公司注册</p>
+        <p class="register-title">注册新账号</p>
+        <div class="role-switch">
+          <el-radio-group v-model="registerRole">
+            <el-radio-button value="货主">货主</el-radio-button>
+            <el-radio-button value="物流公司">物流公司</el-radio-button>
+          </el-radio-group>
+        </div>
         <label class="field">
           <span class="field-label">手机号</span>
           <el-input v-model="regPhone" autocomplete="username" placeholder="请输入手机号" />
@@ -112,12 +112,18 @@ function homeFor(role: string | null): string {
             show-password
           />
         </label>
-        <label class="field">
+        <label v-if="registerRole === '物流公司'" class="field">
           <span class="field-label">企业名称</span>
           <el-input v-model="regCompany" placeholder="请输入企业名称" />
         </label>
-        <el-button class="submit" type="primary" :loading="registering" @click="onRegisterCarrier">
-          注册并进入认证
+        <el-button
+          class="submit"
+          type="primary"
+          native-type="button"
+          :loading="registering"
+          @click="onRegister"
+        >
+          注册并进入
         </el-button>
       </div>
     </form>
@@ -192,5 +198,9 @@ function homeFor(role: string | null): string {
   margin: 0 0 var(--space-4);
   font-size: var(--font-size-md);
   font-weight: 600;
+}
+
+.role-switch {
+  margin-bottom: var(--space-4);
 }
 </style>

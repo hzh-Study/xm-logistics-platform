@@ -24,6 +24,10 @@ Reviewing code? Read `CODING_STANDARDS.md` for the cross-file judgement calls; m
 
 Before reporting any SQLite schema/migration change done, run both from `backend/`: `python -m pytest -q tests/test_migration_integrity.py` (block order, upgrade paths, snapshot immutability, banned source patterns) and the full `python -m pytest -q` (routers/services too).
 
+## Local development
+
+Starting the three services, fixed ports, `.env.development.local` layout, clean restart (orphan vite processes), or verifying the login session over dev HTTP → `docs/local-dev.md`. After any session/cookie/env change, the manual login → `/me` 200 check in that doc is mandatory: CI cannot cover it.
+
 ## Scripting
 
 Automation, startup, build and schema scripts are `.py` files run with `python`; no hand-written `.bat`/`.cmd` or shell script files. `npm run ...` commands and one-line shell commands are the exception. Declare dependencies in `requirements.txt` / `package.json`. Do not introduce external services (MySQL/Redis/Docker) without asking first — they are not installed locally.

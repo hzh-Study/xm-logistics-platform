@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings
 from app.db.connection import initialize
-from app.db.seed import seed_admin
+from app.db.seed import seed_admin, seed_dev_accounts
 from app.errors import register_error_handlers
 from app.routers import (
     admin,
@@ -46,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         conn = connect(settings.db_path)
         try:
             seed_admin(conn, settings.seed_admin_phone, settings.seed_admin_password)
+            seed_dev_accounts(conn, settings.seed_dev_accounts, settings.dev_password)
         finally:
             conn.close()
         yield
