@@ -13,6 +13,7 @@ from app.exceptions import (
     PhoneTakenError,
     WarehouseNotFoundError,
 )
+from app.core.security import session_cookie_name
 from app.schemas.auth import LoginOut
 from app.schemas.shipper import (
     CertificationIn,
@@ -45,7 +46,7 @@ def register(
     account = auth_service.authenticate(conn, payload.phone, payload.password)
     token, csrf, user = auth_service.create_session(conn, account, settings)
     response.set_cookie(
-        key="session_token",
+        key=session_cookie_name(request),
         value=token,
         httponly=True,
         secure=settings.cookie_secure,

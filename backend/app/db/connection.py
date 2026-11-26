@@ -8,7 +8,8 @@ def connect(db_path: str) -> sqlite3.Connection:
     """打开连接并应用连接级 pragma；事务由调用方显式 BEGIN 管理。"""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     # 显式事务模式：autocommit=False 会让连接常驻事务，导致 PRAGMA 无法设置
-    conn = sqlite3.connect(db_path, isolation_level=None)
+    # FastAPI 同步依赖的 yield/close 跨线程，允许同一请求内跨线程使用连接
+    conn = sqlite3.connect(db_path, isolation_level=None, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA busy_timeout = 5000")

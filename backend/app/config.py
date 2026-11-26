@@ -13,6 +13,8 @@ class Settings:
     cors_origins: tuple[str, ...] = (
         "http://localhost:5173",
         "http://localhost:5174",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
     )
     cookie_secure: bool = True
     session_ttl_seconds: int = 8 * 3600

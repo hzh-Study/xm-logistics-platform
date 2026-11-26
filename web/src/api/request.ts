@@ -31,6 +31,7 @@ class RequestClient {
     const method = (init.method ?? 'GET').toUpperCase()
     const headers = new Headers(init.headers)
     headers.set('Content-Type', 'application/json')
+    headers.set('X-Client-Id', 'web')
     if (method !== 'GET' && method !== 'HEAD' && this.csrfToken) {
       headers.set('X-CSRF-Token', this.csrfToken)
     }

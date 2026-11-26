@@ -1,8 +1,19 @@
-"""安全工具：口令哈希、opaque token、摘要与 CSRF token。"""
+"""安全工具：口令哈希、opaque token、摘要、CSRF token 与分端会话 cookie。"""
 
 import hashlib
 import hmac
 import secrets
+
+from fastapi import Request
+
+CLIENT_ID_HEADER = "X-Client-Id"
+SESSION_COOKIES = {"web": "session_token", "h5": "h5_session_token"}
+
+
+def session_cookie_name(request: Request) -> str:
+    """按 X-Client-Id 返回会话 cookie 名，缺省为 Web 以兼容旧客户端。"""
+    client = request.headers.get(CLIENT_ID_HEADER, "web")
+    return SESSION_COOKIES.get(client, SESSION_COOKIES["web"])
 
 
 def hash_password(password: str) -> str:

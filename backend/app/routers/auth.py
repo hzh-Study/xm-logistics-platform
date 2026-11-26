@@ -6,6 +6,7 @@ from fastapi.exceptions import HTTPException
 from app.config import Settings
 from app.dependencies import CsrfDep, CurrentAccountDep, DbConnection
 from app.exceptions import AccountUnavailableError, AuthenticationError
+from app.core.security import session_cookie_name
 from app.schemas.auth import LoginIn, LoginOut, MeOut, UserOut
 from app.services import auth as auth_service
 
@@ -29,7 +30,7 @@ def login(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号不可用")
     token, csrf, user = auth_service.create_session(conn, account, settings)
     response.set_cookie(
-        key="session_token",
+        key=session_cookie_name(request),
         value=token,
         httponly=True,
         secure=settings.cookie_secure,
@@ -61,9 +62,10 @@ def logout(
     _csrf: CsrfDep,
 ) -> Response:
     """撤销会话并清除 cookie。"""
-    token = request.cookies.get("session_token")
+    cookie_name = session_cookie_name(request)
+    token = request.cookies.get(cookie_name)
     if token:
         auth_service.revoke_session(conn, token)
-    response.delete_cookie("session_token", path="/")
+    response.delete_cookie(cookie_name, path="/")
     response.status_code = 204
     return response

@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 
-from app.core.security import sha256_hex
+from app.core.security import session_cookie_name, sha256_hex
 from app.db.connection import connect
 from app.schemas.auth import UserOut
 
@@ -30,7 +30,7 @@ def _current_account(
     request: Request, conn: Annotated[sqlite3.Connection, Depends(get_db)]
 ) -> sqlite3.Row:
     """按 cookie token 解析有效会话与当前账号。"""
-    token = request.cookies.get("session_token")
+    token = request.cookies.get(session_cookie_name(request))
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="未登录")
     now = datetime.now().isoformat()
@@ -85,7 +85,7 @@ def verify_csrf(
     conn: Annotated[sqlite3.Connection, Depends(get_db)],
 ) -> None:
     """写操作校验 CSRF token 与 Origin。"""
-    token = request.cookies.get("session_token")
+    token = request.cookies.get(session_cookie_name(request))
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="未登录")
     now = datetime.now().isoformat()
