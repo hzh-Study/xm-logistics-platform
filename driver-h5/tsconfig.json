@@ -15,5 +15,8 @@
     "paths": { "@/*": ["src/*"] },
     "types": ["vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "src/**/*.d.ts"]
+  "include": ["src/**/*.ts", "src/**/*.vue", "src/**/*.d.ts"],
+  "vueCompilerOptions": {
+    "strictTemplates": true
+  }
 }

@@ -1,25 +1,30 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import {
-  fetchCarrierCertifications,
-  listCarriers,
-  reviewCertification,
-  setCarrierAccountStatus,
-} from '@/api/admin'
+import { fetchCarrierCertifications, listCarriers, reviewCertification, setCarrierAccountStatus } from '@/api/admin'
 import { ApiError } from '@/api/request'
+import PageHeader from '@/components/PageHeader.vue'
+import DetailDrawer from '@/components/DetailDrawer.vue'
+import NoticeBar from '@/components/NoticeBar.vue'
+import StatusPill from '@/components/StatusPill.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import PhotoGrid from '@/components/PhotoGrid.vue'
 import type { CarrierSummary, CertificationRecord } from '@/types/carrier'
 
 const carriers = ref<CarrierSummary[]>([])
 const history = ref<CertificationRecord[]>([])
 const selected = ref<CarrierSummary | null>(null)
+const detailOpen = ref(false)
 const reason = ref('')
+const reasonError = ref('')
 const loading = ref(false)
 const acting = ref(false)
 
-onMounted(loadCarriers)
+function stamp(value: string): string {
+  return value ? value.replace('T', ' ').slice(0, 16) : '—'
+}
 
-async function loadCarriers(): Promise<void> {
+async function load(): Promise<void> {
   loading.value = true
   try {
     carriers.value = await listCarriers()
@@ -30,27 +35,29 @@ async function loadCarriers(): Promise<void> {
   }
 }
 
-async function onSelect(row: CarrierSummary): Promise<void> {
+async function openDetail(row: CarrierSummary): Promise<void> {
   selected.value = row
   reason.value = ''
+  reasonError.value = ''
   try {
     history.value = await fetchCarrierCertifications(row.account_id)
+    detailOpen.value = true
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '读取认证记录失败')
   }
 }
 
-async function onReview(decision: '审核通过' | '审核不通过'): Promise<void> {
+async function review(decision: '审核通过' | '审核不通过'): Promise<void> {
   if (!selected.value) return
   if (decision === '审核不通过' && !reason.value.trim()) {
-    ElMessage.error('驳回原因必填')
+    reasonError.value = '驳回原因为必填项，请说明驳回理由。'
     return
   }
   acting.value = true
   try {
     await reviewCertification(selected.value.account_id, decision, reason.value.trim())
     ElMessage.success(decision === '审核通过' ? '已通过认证' : '已驳回认证')
-    await Promise.all([loadCarriers(), onSelect(selected.value)])
+    await Promise.all([load(), openDetail(selected.value)])
   } catch (error) {
     ElMessage.error(error instanceof ApiError ? error.message : '审核失败')
   } finally {
@@ -58,128 +65,97 @@ async function onReview(decision: '审核通过' | '审核不通过'): Promise<v
   }
 }
 
-async function onToggleStatus(): Promise<void> {
+async function toggleStatus(): Promise<void> {
   if (!selected.value) return
   const next = selected.value.account_status === '已禁用' ? '正常使用' : '已禁用'
   acting.value = true
   try {
     await setCarrierAccountStatus(selected.value.account_id, next)
     ElMessage.success(next === '已禁用' ? '账号已禁用' : '账号已恢复')
-    await loadCarriers()
-    await onSelect(selected.value)
+    await Promise.all([load(), openDetail(selected.value)])
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '操作失败')
   } finally {
     acting.value = false
   }
 }
+
+onMounted(load)
 </script>
 
 <template>
-  <section class="review">
-    <h1 class="page-title">物流公司认证审核</h1>
-    <p class="page-note">审核企业认证资料；驳回须填写公司可见的原因，审核记录只读追加。</p>
+  <section>
+    <PageHeader title="公司认证审核" subtitle="仅处理物流公司企业认证 · 营业执照与资质资料" />
 
-    <div class="panel">
-      <h2 class="panel-title">物流公司列表</h2>
-      <el-table
-        v-loading="loading"
-        :data="carriers"
-        border
-        highlight-current-row
-        @current-change="onSelect"
-      >
-        <el-table-column prop="company_name" label="企业名称" />
-        <el-table-column prop="phone" label="手机号" width="140" />
-        <el-table-column prop="license_no" label="营业执照号" width="200" />
-        <el-table-column prop="auth_status" label="认证状态" width="120" />
-        <el-table-column prop="account_status" label="账号状态" width="120" />
-      </el-table>
-    </div>
-
-    <div v-if="selected" class="panel">
-      <h2 class="panel-title">{{ selected.company_name }} · 认证记录</h2>
-      <p v-if="!history.length" class="empty">该公司尚未提交认证资料。</p>
-      <el-table v-else :data="history" border>
-        <el-table-column prop="created_at" label="时间" width="180" />
-        <el-table-column prop="kind" label="类型" width="90" />
-        <el-table-column prop="decision" label="结论" width="90" />
-        <el-table-column prop="company_name" label="企业名称" />
-        <el-table-column prop="license_no" label="营业执照号" width="200" />
-        <el-table-column prop="reason" label="驳回原因" />
-      </el-table>
-
-      <div class="actions">
-        <label class="field">
-          <span class="field-label">驳回原因（驳回时必填）</span>
-          <el-input v-model="reason" type="textarea" maxlength="1000" rows="2" />
-        </label>
-        <div class="buttons">
-          <el-button type="success" :loading="acting" @click="onReview('审核通过')">审核通过</el-button>
-          <el-button type="danger" :loading="acting" @click="onReview('审核不通过')">审核不通过</el-button>
-          <el-button :loading="acting" @click="onToggleStatus">
-            {{ selected.account_status === '已禁用' ? '恢复账号' : '禁用账号' }}
-          </el-button>
+    <section class="panel">
+      <div class="panel-head"><span class="panel-title">审核列表</span><span class="panel-hint">共 {{ carriers.length }} 条</span></div>
+      <div class="panel-body panel-body--tight">
+        <EmptyState v-if="!carriers.length" text="暂无物流公司认证记录" />
+        <div v-else class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th class="num">主体编号</th><th>企业名称</th><th class="num">统一社会信用代码</th><th>认证状态</th><th class="ops">操作</th></tr></thead>
+            <tbody>
+              <tr v-for="row in carriers" :key="row.account_id">
+                <td class="num">{{ row.account_id }}</td>
+                <td>{{ row.company_name }}</td>
+                <td class="num">{{ row.license_no }}</td>
+                <td><StatusPill :text="row.auth_status" /></td>
+                <td class="ops"><el-button type="primary" link @click="openDetail(row)">{{ row.auth_status === '待审核' ? '审核' : '查看' }}</el-button></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pagination"><span>共 {{ carriers.length }} 条</span></div>
         </div>
       </div>
-    </div>
-    <div v-else class="panel empty">从列表中选择一家物流公司进行审核。</div>
+    </section>
+
+    <DetailDrawer v-model="detailOpen" :title="`公司认证审核 · ${selected?.company_name ?? ''}`">
+      <template #body>
+        <template v-if="selected">
+          <NoticeBar tone="info">审核通过后资料生效；驳回必须填写原因，原因作为追加记录对该主体可见。</NoticeBar>
+          <dl class="kv section-gap">
+            <dt>企业名称</dt><dd>{{ selected.company_name }}</dd>
+            <dt>统一社会信用代码</dt><dd class="num">{{ selected.license_no }}</dd>
+            <dt>认证状态</dt><dd><StatusPill :text="selected.auth_status" /></dd>
+            <dt>账号状态</dt><dd><StatusPill :text="selected.account_status" /></dd>
+          </dl>
+          <template v-if="history.length">
+            <div v-for="record in history" :key="record.id" class="record">
+              <div class="record-head">
+                <StatusPill :text="record.decision || '待审核'" />
+                <span class="record-meta">{{ record.actor }} · {{ stamp(record.created_at) }}</span>
+              </div>
+              <p class="record-text">{{ record.legal_person }} · {{ record.contact_name }} {{ record.contact_phone }}</p>
+              <PhotoGrid :photos="[record.license_path, record.qualification_path].filter(Boolean)" />
+              <p v-if="record.reason" class="record-reason">驳回原因：{{ record.reason }}</p>
+            </div>
+          </template>
+          <EmptyState v-else text="暂无认证记录" />
+          <div class="field section-gap">
+            <label class="field__label" for="cr-reason"><span class="field__req">*</span>驳回原因（驳回时必填）</label>
+            <el-input id="cr-reason" v-model="reason" type="textarea" :rows="3" />
+            <p v-if="reasonError" class="field__error">{{ reasonError }}</p>
+          </div>
+          <div class="account-ops">
+            <el-button @click="toggleStatus">{{ selected.account_status === '已禁用' ? '恢复账号' : '禁用账号' }}</el-button>
+          </div>
+        </template>
+      </template>
+      <template #footer>
+        <el-button @click="detailOpen = false">关闭</el-button>
+        <el-button type="danger" :loading="acting" @click="review('审核不通过')">驳回</el-button>
+        <el-button type="primary" :loading="acting" @click="review('审核通过')">通过</el-button>
+      </template>
+    </DetailDrawer>
   </section>
 </template>
 
 <style scoped>
-.review {
-  padding: var(--space-2) 0;
-}
-
-.page-title {
-  margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-}
-
-.page-note {
-  margin: var(--space-1) 0 var(--space-6);
-  color: var(--color-text-muted);
-}
-
-.panel {
-  padding: var(--space-6);
-  margin-bottom: var(--space-6);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-}
-
-.panel-title {
-  margin: 0 0 var(--space-4);
-  font-size: var(--font-size-md);
-  font-weight: 600;
-}
-
-.actions {
-  margin-top: var(--space-6);
-}
-
-.field {
-  display: block;
-  max-width: 640px;
-}
-
-.field-label {
-  display: block;
-  margin-bottom: var(--space-2);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-}
-
-.buttons {
-  display: flex;
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-}
-
-.empty {
-  color: var(--color-text-muted);
-}
+.section-gap { margin-top: var(--space-4); }
+.record { padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); }
+.record-head { display: flex; align-items: center; gap: var(--space-3); }
+.record-meta { color: var(--color-text-3); font-size: var(--font-size-xs); }
+.record-text { margin: var(--space-2) 0 0; font-size: var(--font-size-sm); color: var(--color-text-2); }
+.record-reason { margin: var(--space-2) 0 0; font-size: var(--font-size-sm); color: var(--color-error); }
+.account-ops { margin-top: var(--space-4); }
 </style>

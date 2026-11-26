@@ -3,6 +3,11 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as shipperApi from '@/api/shipper'
 import { useAuthStore } from '@/stores/auth'
+import PageHeader from '@/components/PageHeader.vue'
+import NoticeBar from '@/components/NoticeBar.vue'
+import StatusPill from '@/components/StatusPill.vue'
+import FormSection from '@/components/FormSection.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import type { CertificationInput, CertificationView } from '@/types/shipper'
 
 const auth = useAuthStore()
@@ -18,20 +23,13 @@ const form = ref<CertificationInput>({
 })
 const documentsText = ref('')
 
-// 仅未提交或被驳回时可提交 / 重新提交
 const canSubmit = computed(() =>
   ['未提交', '审核不通过'].includes(view.value?.auth_status ?? ''),
 )
 
-const statusType = computed(() => {
-  const map: Record<string, string> = {
-    审核通过: 'success',
-    审核不通过: 'danger',
-    待审核: 'warning',
-    未提交: 'info',
-  }
-  return map[view.value?.auth_status ?? ''] ?? 'info'
-})
+function time(value: string | null): string {
+  return value ? value.replace('T', ' ').slice(0, 16) : '—'
+}
 
 function failure(error: unknown): string {
   return error instanceof Error ? error.message : '操作失败，请稍后重试'
@@ -49,6 +47,10 @@ async function load(): Promise<void> {
 }
 
 async function onSubmit(): Promise<void> {
+  if (!form.value.name.trim() || !form.value.id_number.trim() || !form.value.contact_phone.trim()) {
+    ElMessage.warning('请完整填写名称、证件号码与联系人电话')
+    return
+  }
   saving.value = true
   try {
     const data: CertificationInput = {
@@ -72,140 +74,92 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="cert">
-    <h1 class="page-title">货主认证</h1>
-    <p class="page-note">
-      当前认证状态：<el-tag :type="statusType">{{ view?.auth_status ?? '加载中' }}</el-tag>
-    </p>
+  <section v-loading="loading">
+    <PageHeader title="货主认证" subtitle="认证信息只读展示，业务记录追加式不可改写" />
 
-    <div v-if="view?.current?.rejection_reason" class="panel rejection">
-      <h2 class="panel-title">审核驳回原因</h2>
-      <p class="rejection-text">{{ view.current.rejection_reason }}</p>
-      <p class="panel-text">请据此修改资料后重新提交。</p>
-    </div>
+    <NoticeBar v-if="view?.current?.rejection_reason" tone="error">
+      审核驳回原因：{{ view.current.rejection_reason }}，请修改资料后重新提交。
+    </NoticeBar>
 
-    <div v-if="view?.current" class="panel">
-      <h2 class="panel-title">最近一次提交</h2>
-      <dl class="detail">
-        <dt>认证类型</dt>
-        <dd>{{ view.current.cert_type }}</dd>
-        <dt>姓名 / 企业名称</dt>
-        <dd>{{ view.current.name }}</dd>
-        <dt>证件号码</dt>
-        <dd>{{ view.current.id_number }}</dd>
-        <dt>联系人电话</dt>
-        <dd>{{ view.current.contact_phone }}</dd>
-        <dt>审核结果</dt>
-        <dd>{{ view.current.status }}</dd>
-      </dl>
-    </div>
+    <NoticeBar v-if="view" :tone="view.auth_status === '审核通过' ? 'info' : 'warning'">
+      认证状态：<StatusPill :text="view.auth_status" />
+      <template v-if="view.auth_status === '审核通过'">。审核通过后资料不可自行修改；如需变更，请联系平台管理员。</template>
+      <template v-else-if="view.auth_status === '待审核'">。资料审核中，请耐心等待。</template>
+    </NoticeBar>
 
-    <div v-if="canSubmit" class="panel">
-      <h2 class="panel-title">{{ view?.current ? '重新提交认证资料' : '提交认证资料' }}</h2>
-      <form class="cert-form" @submit.prevent="onSubmit">
-        <label class="field">
-          <span class="field-label">认证类型</span>
-          <el-select v-model="form.cert_type">
+    <FormSection title="企业基本信息">
+      <template v-if="view?.current">
+        <dl class="kv">
+          <dt>认证类型</dt><dd>{{ view.current.cert_type }}</dd>
+          <dt>名称</dt><dd>{{ view.current.name }}</dd>
+          <dt>证件号码</dt><dd class="num">{{ view.current.id_number }}</dd>
+          <dt>联系人电话</dt><dd class="num">{{ view.current.contact_phone }}</dd>
+          <dt>提交时间</dt><dd class="num">{{ time(view.current.submitted_at) }}</dd>
+          <dt>审核结果</dt><dd><StatusPill :text="view.current.status" /></dd>
+        </dl>
+        <div v-if="view.current.documents.length" class="docs">
+          <span>资料文件</span>
+          <span v-for="(doc, index) in view.current.documents" :key="`${doc}-${index}`" class="doc">{{ doc }}</span>
+        </div>
+      </template>
+      <EmptyState v-else text="暂无认证资料" />
+    </FormSection>
+
+    <section class="panel">
+      <div class="panel-head"><span class="panel-title">认证记录</span></div>
+      <div class="panel-body">
+        <EmptyState v-if="!view?.history.length" text="暂无认证记录" />
+        <ul v-else class="record-list">
+          <li v-for="item in view.history" :key="item.id">
+            <StatusPill :text="item.status" />
+            <span class="record-meta">{{ time(item.submitted_at) }} · {{ item.reviewer_id ? '管理员' : '货主' }}</span>
+            <span v-if="item.rejection_reason" class="record-reason">{{ item.rejection_reason }}</span>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <FormSection v-if="canSubmit" :title="view?.current ? '重新提交认证资料' : '提交认证资料'">
+      <form class="form-grid" @submit.prevent="onSubmit">
+        <div class="field">
+          <label class="field__label" for="cert-type">认证类型</label>
+          <el-select id="cert-type" v-model="form.cert_type">
             <el-option label="个人" value="个人" />
             <el-option label="企业" value="企业" />
           </el-select>
-        </label>
-        <label class="field">
-          <span class="field-label">姓名 / 企业名称</span>
-          <el-input v-model="form.name" placeholder="请输入姓名或企业名称" />
-        </label>
-        <label class="field">
-          <span class="field-label">证件号码</span>
-          <el-input v-model="form.id_number" placeholder="身份证号或统一社会信用代码" />
-        </label>
-        <label class="field">
-          <span class="field-label">联系人电话</span>
-          <el-input v-model="form.contact_phone" placeholder="请输入联系人电话" />
-        </label>
-        <label class="field">
-          <span class="field-label">资料路径（每行一个相对路径）</span>
-          <el-input v-model="documentsText" type="textarea" :rows="3" placeholder="certs/id-front.png" />
-        </label>
-        <el-button type="primary" native-type="submit" :loading="saving">提交审核</el-button>
+        </div>
+        <div class="field">
+          <label class="field__label" for="cert-name"><span class="field__req">*</span>姓名 / 企业名称</label>
+          <el-input id="cert-name" v-model="form.name" placeholder="请输入姓名或企业名称" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="cert-id"><span class="field__req">*</span>证件号码</label>
+          <el-input id="cert-id" v-model="form.id_number" placeholder="身份证号或统一社会信用代码" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="cert-phone"><span class="field__req">*</span>联系人电话</label>
+          <el-input id="cert-phone" v-model="form.contact_phone" placeholder="请输入联系人电话" />
+        </div>
+        <div class="field field--wide">
+          <label class="field__label" for="cert-docs">资料路径（每行一个相对路径）</label>
+          <el-input id="cert-docs" v-model="documentsText" type="textarea" :rows="3" placeholder="certs/id-front.png" />
+          <p class="field__help">凭证仅存库内相对路径，不上传绝对路径。</p>
+        </div>
+        <div class="field field--wide form-actions">
+          <el-button type="primary" native-type="submit" :loading="saving">提交审核</el-button>
+        </div>
       </form>
-    </div>
-
-    <p v-else-if="view?.auth_status === '审核通过'" class="panel-text">认证已通过，可发布运输订单。</p>
-    <p v-else-if="view?.auth_status === '待审核'" class="panel-text">资料审核中，请耐心等待。</p>
+    </FormSection>
   </section>
 </template>
 
 <style scoped>
-.cert {
-  padding: var(--space-2) 0;
-}
-
-.page-title {
-  margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-}
-
-.page-note {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: var(--space-1) 0 var(--space-6);
-  color: var(--color-text-muted);
-}
-
-.panel {
-  margin-bottom: var(--space-4);
-  padding: var(--space-6);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-}
-
-.panel-title {
-  margin: 0 0 var(--space-3);
-  font-size: var(--font-size-md);
-  font-weight: 600;
-}
-
-.panel-text {
-  margin: var(--space-2) 0 0;
-  color: var(--color-text-muted);
-}
-
-.rejection {
-  border-color: var(--color-error);
-}
-
-.rejection-text {
-  margin: 0;
-  font-weight: 600;
-}
-
-.detail {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: var(--space-2);
-  margin: 0;
-}
-
-.detail dt {
-  color: var(--color-text-muted);
-}
-
-.detail dd {
-  margin: 0;
-}
-
-.field {
-  display: block;
-  margin-bottom: var(--space-4);
-}
-
-.field-label {
-  display: block;
-  margin-bottom: var(--space-2);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-}
+.docs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-4); font-size: var(--font-size-sm); color: var(--color-text-3); }
+.doc { padding: 2px 8px; border-radius: var(--radius-control); background: var(--color-fill); }
+.record-list { margin: 0; padding: 0; list-style: none; }
+.record-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); }
+.record-list li:last-child { border-bottom: 0; }
+.record-meta { font-size: var(--font-size-xs); color: var(--color-text-3); font-variant-numeric: tabular-nums; }
+.record-reason { font-size: var(--font-size-sm); color: var(--color-error); }
+.field--wide { grid-column: 1 / -1; }
 </style>

@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { ApiError } from '@/api/request'
 import { listExpenses, markExpensePaid, reviewExpense } from '@/api/expense'
 import type { ExpenseFilters } from '@/api/expense'
+import PageHeader from '@/components/PageHeader.vue'
+import FilterPanel from '@/components/FilterPanel.vue'
+import DetailDrawer from '@/components/DetailDrawer.vue'
+import StatusPill from '@/components/StatusPill.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import PhotoGrid from '@/components/PhotoGrid.vue'
 import type { Expense, ExpenseReviewStatus, ExpenseType } from '@/types/expense'
 
 const expenses = ref<Expense[]>([])
@@ -11,13 +18,31 @@ const loading = ref(false)
 const saving = ref(false)
 const filter = reactive<ExpenseFilters>({})
 const types: ExpenseType[] = ['油费', '过路费', '停车费', '维修费', '其他']
-const reviewStatuses: ExpenseReviewStatus[] = ['待审核', '审核通过', '审核驳回']
-const reviewVisible = ref(false)
+
+const reviewOpen = ref(false)
 const reviewTarget = ref<Expense | null>(null)
 const reviewDecision = ref<ExpenseReviewStatus>('审核通过')
 const reviewReason = ref('')
+const reviewError = ref('')
+const detailOpen = ref(false)
+const detailTarget = ref<Expense | null>(null)
+const payTarget = ref<Expense | null>(null)
+const payOpen = ref(false)
 
-onMounted(load)
+function displayReview(status: string): string {
+  return status === '审核驳回' ? '审核不通过' : status
+}
+
+function stamp(value: string): string {
+  return value ? value.replace('T', ' ').slice(0, 16) : '—'
+}
+
+const filtered = () => expenses.value.filter((expense) =>
+  (!filter.expense_type || expense.expense_type === filter.expense_type) &&
+  (!filter.review_status || expense.review_status === filter.review_status) &&
+  (!filter.payment_status || expense.payment_status === filter.payment_status) &&
+  (!filter.task_id || expense.task_no.includes(String(filter.task_id))),
+)
 
 async function load(): Promise<void> {
   loading.value = true
@@ -50,13 +75,8 @@ function toIso(value: string): string {
 
 function resetFilter(): void {
   Object.assign(filter, {
-    driver_account_id: undefined,
-    task_id: undefined,
-    expense_type: undefined,
-    submitted_from: undefined,
-    submitted_to: undefined,
-    review_status: undefined,
-    payment_status: undefined,
+    driver_account_id: undefined, task_id: undefined, expense_type: undefined,
+    submitted_from: undefined, submitted_to: undefined, review_status: undefined, payment_status: undefined,
   })
   void load()
 }
@@ -65,20 +85,21 @@ function openReview(row: Expense, decision: ExpenseReviewStatus): void {
   reviewTarget.value = row
   reviewDecision.value = decision
   reviewReason.value = ''
-  reviewVisible.value = true
+  reviewError.value = ''
+  reviewOpen.value = true
 }
 
 async function submitReview(): Promise<void> {
   if (!reviewTarget.value) return
   if (reviewDecision.value === '审核驳回' && !reviewReason.value.trim()) {
-    ElMessage.error('驳回原因必填，司机将看到该原因')
+    reviewError.value = '驳回原因为必填项，司机将看到该原因。'
     return
   }
   saving.value = true
   try {
     await reviewExpense(reviewTarget.value.id, reviewDecision.value, reviewReason.value.trim())
     ElMessage.success(reviewDecision.value === '审核通过' ? '费用已审核通过' : '已驳回并通知司机')
-    reviewVisible.value = false
+    reviewOpen.value = false
     await load()
   } catch (error) {
     report(error, '审核失败')
@@ -87,16 +108,25 @@ async function submitReview(): Promise<void> {
   }
 }
 
-async function onPaid(row: Expense): Promise<void> {
-  try {
-    await ElMessageBox.confirm('确认已线下付款并标记该笔费用为已支付？', '标记已支付')
-  } catch {
-    return
-  }
+function openDetail(row: Expense): void {
+  detailTarget.value = row
+  detailOpen.value = true
+}
+
+function askPaid(row: Expense): void {
+  payTarget.value = row
+  payOpen.value = true
+}
+
+async function markPaid(): Promise<void> {
+  const target = payTarget.value
+  if (!target) return
   saving.value = true
   try {
-    await markExpensePaid(row.id)
+    await markExpensePaid(target.id)
     ElMessage.success('已标记已支付')
+    payOpen.value = false
+    detailOpen.value = false
     await load()
   } catch (error) {
     report(error, '标记已支付失败')
@@ -104,122 +134,135 @@ async function onPaid(row: Expense): Promise<void> {
     saving.value = false
   }
 }
+
+onMounted(load)
 </script>
 
 <template>
-  <div class="expenses">
-    <h1>费用审核</h1>
-    <p class="intro">按司机、运输任务、费用类型、提交时间与审核状态筛选；审核与支付分别处理。</p>
+  <section>
+    <PageHeader title="费用审核" :subtitle="`待审核 ${expenses.filter((item) => item.review_status === '待审核').length} · 审核通过 ${expenses.filter((item) => item.review_status === '审核通过').length} · 审核不通过 ${expenses.filter((item) => item.review_status === '审核驳回').length}`">
+      <template #actions><el-button @click="load">刷新</el-button></template>
+    </PageHeader>
 
-    <div class="filters">
-      <label>司机账号 ID <input v-model.number="filter.driver_account_id" type="number" min="1" /></label>
-      <label>任务 ID <input v-model.number="filter.task_id" type="number" min="1" /></label>
-      <label>
-        费用类型
-        <select v-model="filter.expense_type">
-          <option value="">全部</option>
-          <option v-for="type in types" :key="type" :value="type">{{ type }}</option>
-        </select>
-      </label>
-      <label>提交起 <input v-model="filter.submitted_from" type="datetime-local" /></label>
-      <label>提交止 <input v-model="filter.submitted_to" type="datetime-local" /></label>
-      <label>
-        审核状态
-        <select v-model="filter.review_status">
-          <option value="">全部</option>
-          <option v-for="status in reviewStatuses" :key="status" :value="status">{{ status }}</option>
-        </select>
-      </label>
-      <div class="filter-actions">
-        <button class="btn primary" type="button" @click="load">筛选</button>
-        <button class="btn ghost" type="button" @click="resetFilter">重置</button>
+    <FilterPanel>
+      <div class="filter-grid">
+        <div class="field"><label class="field__label" for="ex-task">任务编号</label><el-input id="ex-task" v-model="filter.task_id" placeholder="请输入任务编号" clearable /></div>
+        <div class="field">
+          <label class="field__label" for="ex-type">费用类型</label>
+          <el-select id="ex-type" v-model="filter.expense_type" placeholder="全部" clearable>
+            <el-option v-for="item in types" :key="item" :label="item === '维修费' ? '维修' : item" :value="item" />
+          </el-select>
+        </div>
+        <div class="field"><label class="field__label">提交时间</label><el-date-picker v-model="filter.submitted_from" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" class="date-input" /></div>
+        <div class="field"><label class="field__label">提交时间（止）</label><el-date-picker v-model="filter.submitted_to" type="date" value-format="YYYY-MM-DD" placeholder="结束日期" class="date-input" /></div>
+        <div class="field">
+          <label class="field__label" for="ex-review">审核状态</label>
+          <el-select id="ex-review" v-model="filter.review_status" placeholder="全部" clearable>
+            <el-option label="待审核" value="待审核" />
+            <el-option label="审核通过" value="审核通过" />
+            <el-option label="审核不通过" value="审核驳回" />
+          </el-select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="ex-pay">支付状态</label>
+          <el-select id="ex-pay" v-model="filter.payment_status" placeholder="全部" clearable>
+            <el-option label="待支付" value="待支付" /><el-option label="已支付" value="已支付" />
+          </el-select>
+        </div>
       </div>
-    </div>
+      <div class="filter-actions">
+        <el-button @click="resetFilter">重置</el-button>
+        <el-button type="primary" @click="load">查询</el-button>
+      </div>
+    </FilterPanel>
 
-    <el-table :data="expenses" v-loading="loading" border style="width: 100%">
-      <el-table-column prop="expense_no" label="费用编号" min-width="150" />
-      <el-table-column label="司机 / 任务" min-width="160">
-        <template #default="{ row }">
-          <div>{{ (row as Expense).driver_name }}（{{ (row as Expense).driver_account_id }}）</div>
-          <div class="muted">{{ (row as Expense).task_no }}</div>
-        </template>
-      </el-table-column>
-      <el-table-column label="类型 / 金额" min-width="120">
-        <template #default="{ row }">
-          {{ (row as Expense).expense_type }} · {{ (row as Expense).amount_yuan }} 元
-        </template>
-      </el-table-column>
-      <el-table-column prop="incurred_at" label="发生时间" min-width="170" />
-      <el-table-column label="审核 / 支付" min-width="120">
-        <template #default="{ row }">
-          <div>{{ (row as Expense).review_status }}</div>
-          <div class="muted">{{ (row as Expense).payment_status }}</div>
-        </template>
-      </el-table-column>
-      <el-table-column label="说明 / 驳回原因" min-width="180">
-        <template #default="{ row }">
-          <div>{{ (row as Expense).description }}</div>
-          <div v-if="(row as Expense).review_reason" class="reason">
-            驳回原因：{{ (row as Expense).review_reason }}
+    <section class="panel">
+      <div class="panel-head"><span class="panel-title">报销费用列表</span><span class="panel-hint">报销费用由司机按运输任务提交 · 单条处理，非批量</span></div>
+      <div class="panel-body panel-body--tight">
+        <EmptyState v-if="!filtered().length" text="暂无报销费用" />
+        <div v-else class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr><th class="num">费用编号</th><th>司机 / 任务</th><th>费用类型</th><th class="num">金额</th><th class="num">提交时间</th><th>审核状态</th><th>支付状态</th><th class="ops">操作</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in filtered()" :key="row.id">
+                <td class="num">{{ row.expense_no }}</td>
+                <td>{{ row.driver_name }}<div class="cell-sub">{{ row.task_no }}</div></td>
+                <td>{{ row.expense_type === '维修费' ? '维修' : row.expense_type }}</td>
+                <td class="num">¥ {{ row.amount_yuan }}</td>
+                <td class="num">{{ stamp(row.incurred_at) }}</td>
+                <td><StatusPill :text="displayReview(row.review_status)" /></td>
+                <td><StatusPill :text="row.payment_status" /></td>
+                <td class="ops">
+                  <el-button v-if="row.review_status === '待审核'" type="primary" link @click="openReview(row, '审核通过')">审核</el-button>
+                  <el-button v-if="row.review_status === '审核通过' && row.payment_status === '待支付'" type="primary" link @click="askPaid(row)">标记已支付</el-button>
+                  <el-button v-if="row.review_status === '审核驳回'" type="primary" link @click="openDetail(row)">查看原因</el-button>
+                  <el-button type="primary" link @click="openDetail(row)">查看详情</el-button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pagination"><span>共 {{ filtered().length }} 条</span></div>
+        </div>
+      </div>
+    </section>
+
+    <DetailDrawer v-model="reviewOpen" :title="`费用审核 · ${reviewTarget?.expense_no ?? ''}`">
+      <template #body>
+        <template v-if="reviewTarget">
+          <NoticeBar tone="info">审核状态与支付状态相互独立：审核通过不代表已支付；线下支付后由本公司单条标记「已支付」并记录操作人与时间。</NoticeBar>
+          <dl class="kv section-gap">
+            <dt>费用编号</dt><dd class="num">{{ reviewTarget.expense_no }}</dd>
+            <dt>司机</dt><dd>{{ reviewTarget.driver_name }}</dd>
+            <dt>关联任务</dt><dd class="num">{{ reviewTarget.task_no }}</dd>
+            <dt>费用类型</dt><dd>{{ reviewTarget.expense_type }}</dd>
+            <dt>金额</dt><dd class="num">¥ {{ reviewTarget.amount_yuan }}</dd>
+            <dt>提交时间</dt><dd class="num">{{ stamp(reviewTarget.incurred_at) }}</dd>
+            <dt>费用说明</dt><dd>{{ reviewTarget.description }}</dd>
+          </dl>
+          <PhotoGrid v-if="reviewTarget.vouchers.length" :photos="reviewTarget.vouchers" />
+          <div class="field section-gap">
+            <label class="field__label" for="ex-reason"><span v-if="reviewDecision === '审核驳回'" class="field__req">*</span>驳回原因（驳回时必填）</label>
+            <el-input id="ex-reason" v-model="reviewReason" type="textarea" :rows="3" placeholder="请填写驳回原因，司机可见" />
+            <p v-if="reviewError" class="field__error">{{ reviewError }}</p>
           </div>
         </template>
-      </el-table-column>
-      <el-table-column label="凭证" min-width="170">
-        <template #default="{ row }">
-          <div v-for="path in (row as Expense).vouchers" :key="path" class="muted">{{ path }}</div>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" min-width="200" fixed="right">
-        <template #default="{ row }">
-          <template v-if="(row as Expense).review_status === '待审核'">
-            <button class="btn small" type="button" :disabled="saving" @click="openReview(row as Expense, '审核通过')">通过</button>
-            <button class="btn small ghost" type="button" :disabled="saving" @click="openReview(row as Expense, '审核驳回')">驳回</button>
-          </template>
-          <button
-            v-else-if="(row as Expense).review_status === '审核通过' && (row as Expense).payment_status === '待支付'"
-            class="btn small"
-            type="button"
-            :disabled="saving"
-            @click="onPaid(row as Expense)"
-          >
-            标记已支付
-          </button>
-          <span v-else class="muted">已处理</span>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <el-dialog v-model="reviewVisible" :title="reviewDecision === '审核通过' ? '审核通过' : '审核驳回'" width="460px">
-      <template v-if="reviewTarget">
-        <p class="dialog-line">{{ reviewTarget.expense_no }} · {{ reviewTarget.expense_type }} {{ reviewTarget.amount_yuan }} 元</p>
-        <label class="dialog-field">
-          <span>驳回原因（驳回必填，司机可见）</span>
-          <textarea v-model="reviewReason" rows="3" maxlength="500" placeholder="请说明驳回原因" />
-        </label>
       </template>
       <template #footer>
-        <button class="btn ghost" type="button" @click="reviewVisible = false">取消</button>
-        <button class="btn primary" type="button" :disabled="saving" @click="submitReview">确认</button>
+        <el-button @click="reviewOpen = false">关闭</el-button>
+        <el-button type="danger" @click="reviewTarget && openReview(reviewTarget, '审核驳回')">驳回</el-button>
+        <el-button type="primary" :loading="saving" @click="submitReview">审核通过</el-button>
       </template>
-    </el-dialog>
-  </div>
+    </DetailDrawer>
+
+    <DetailDrawer v-model="detailOpen" :title="`费用详情 · ${detailTarget?.expense_no ?? ''}`">
+      <template #body>
+        <template v-if="detailTarget">
+          <NoticeBar v-if="detailTarget.review_reason" tone="error">驳回原因：{{ detailTarget.review_reason }}</NoticeBar>
+          <dl class="kv section-gap">
+            <dt>费用编号</dt><dd class="num">{{ detailTarget.expense_no }}</dd>
+            <dt>金额</dt><dd class="num">¥ {{ detailTarget.amount_yuan }}</dd>
+            <dt>审核状态</dt><dd><StatusPill :text="displayReview(detailTarget.review_status)" /></dd>
+            <dt>支付状态</dt><dd><StatusPill :text="detailTarget.payment_status" /></dd>
+            <dt>关联任务</dt><dd class="num">{{ detailTarget.task_no }}</dd>
+          </dl>
+          <PhotoGrid v-if="detailTarget.vouchers.length" :photos="detailTarget.vouchers" />
+        </template>
+      </template>
+      <template #footer>
+        <el-button @click="detailOpen = false">关闭</el-button>
+        <el-button v-if="detailTarget?.review_status === '审核通过' && detailTarget.payment_status === '待支付'" type="primary" @click="askPaid(detailTarget)">标记已支付</el-button>
+      </template>
+    </DetailDrawer>
+
+    <ConfirmDialog v-model="payOpen" title="标记已支付" confirm-text="确认已支付" @confirm="markPaid">
+      确认已在线下完成支付？提交后将记录操作人与操作时间，支付状态变为「已支付」。
+    </ConfirmDialog>
+  </section>
 </template>
 
 <style scoped>
-.expenses h1 { margin: 0 0 var(--space-2); font-size: var(--font-size-xl); }
-.intro { margin: 0 0 var(--space-4); color: var(--color-text-muted); font-size: var(--font-size-sm); }
-.filters { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-end; margin-bottom: var(--space-4); padding: var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); }
-.filters label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-sm); color: var(--color-text-muted); }
-.filters input, .filters select { min-height: 36px; padding: 0 var(--space-2); font: inherit; color: var(--color-text); background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius); }
-.filter-actions { display: flex; gap: var(--space-2); }
-.btn { min-height: 36px; padding: 0 var(--space-3); font: inherit; border-radius: var(--radius); cursor: pointer; }
-.btn.primary { color: #fff; background: var(--color-accent); border: 1px solid var(--color-accent); }
-.btn.ghost { color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border); }
-.btn.small { min-height: 30px; padding: 0 var(--space-2); font-size: var(--font-size-sm); }
-.btn:disabled { opacity: 0.6; cursor: default; }
-.muted { color: var(--color-text-muted); font-size: var(--font-size-sm); }
-.reason { color: var(--color-error); font-size: var(--font-size-sm); }
-.dialog-line { font-size: var(--font-size-sm); color: var(--color-text-muted); }
-.dialog-field { display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--font-size-sm); }
-.dialog-field textarea { padding: var(--space-2); font: inherit; color: var(--color-text); background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius); }
+.date-input { width: 100%; }
+.section-gap { margin-top: var(--space-4); }
 </style>

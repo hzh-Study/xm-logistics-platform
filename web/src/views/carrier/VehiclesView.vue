@@ -3,50 +3,30 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ApiError } from '@/api/request'
 import { listDrivers } from '@/api/driver'
-import {
-  assignVehicle,
-  createVehicle,
-  listVehicles,
-  setVehicleAvailability,
-  setVehicleDocumentStatus,
-  setVehicleLifecycle,
-} from '@/api/vehicle'
+import { assignVehicle, createVehicle, listVehicles, setVehicleAvailability, setVehicleDocumentStatus, setVehicleLifecycle } from '@/api/vehicle'
+import PageHeader from '@/components/PageHeader.vue'
+import FilterPanel from '@/components/FilterPanel.vue'
+import DetailDrawer from '@/components/DetailDrawer.vue'
+import StatusPill from '@/components/StatusPill.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import type { Driver } from '@/types/driver'
-import type {
-  Availability,
-  DocumentStatus,
-  Lifecycle,
-  OwnerType,
-  Vehicle,
-  VehicleCreatePayload,
-  VehicleType,
-} from '@/types/vehicle'
+import type { Availability, DocumentStatus, Lifecycle, OwnerType, Vehicle, VehicleCreatePayload } from '@/types/vehicle'
 
 const vehicles = ref<Vehicle[]>([])
 const drivers = ref<Driver[]>([])
 const loading = ref(false)
 const saving = ref(false)
-const filter = reactive<{
-  availability?: Availability
-  lifecycle?: Lifecycle
-  owner_type?: OwnerType
-  assignable: boolean
-}>({ assignable: false })
+const filter = reactive<{ plate?: string; availability?: Availability; lifecycle?: Lifecycle; owner_type?: OwnerType }>({})
 
-const createVisible = ref(false)
-const assignVisible = ref(false)
-const statusVisible = ref(false)
+const createOpen = ref(false)
+const assignOpen = ref(false)
+const statusOpen = ref(false)
 const assigning = ref<Vehicle | null>(null)
 const statusTarget = ref<Vehicle | null>(null)
 
 const createForm = reactive<VehicleCreatePayload>({
-  plate_no: '',
-  vehicle_type: '厢式货车',
-  length_m: 4.2,
-  max_load_kg: 5000,
-  owner_type: '公司',
-  owner_driver_id: null,
-  document_status: '待审核',
+  plate_no: '', vehicle_type: '厢式货车', length_m: 4.2, max_load_kg: 5000,
+  owner_type: '公司', owner_driver_id: null, document_status: '待审核',
 })
 const assignForm = reactive({ driver_account_id: null as number | null })
 const statusForm = reactive({
@@ -55,20 +35,30 @@ const statusForm = reactive({
   document_status: '待审核' as DocumentStatus,
 })
 
-onMounted(load)
+const VEHICLE_TYPE_OPTIONS = [
+  { label: '平板车', value: '平板货车' },
+  { label: '厢式货车', value: '厢式货车' },
+  { label: '高栏车', value: '高栏货车' },
+  { label: '自卸车', value: '其他' },
+  { label: '冷藏车', value: '冷藏车' },
+]
+
+function displayVehicleType(value: string): string {
+  const found = VEHICLE_TYPE_OPTIONS.find((item) => item.value === value)
+  return found?.label ?? value
+}
+
+const filtered = () => vehicles.value.filter((vehicle) =>
+  (!filter.plate || vehicle.plate_no.includes(filter.plate)) &&
+  (!filter.availability || vehicle.availability === filter.availability) &&
+  (!filter.lifecycle || vehicle.lifecycle === filter.lifecycle) &&
+  (!filter.owner_type || vehicle.owner_type === filter.owner_type),
+)
 
 async function load(): Promise<void> {
   loading.value = true
   try {
-    const [vehicleRows, driverRows] = await Promise.all([
-      listVehicles({
-        availability: filter.availability,
-        lifecycle: filter.lifecycle,
-        owner_type: filter.owner_type,
-        assignable: filter.assignable,
-      }),
-      listDrivers(),
-    ])
+    const [vehicleRows, driverRows] = await Promise.all([listVehicles(), listDrivers()])
     vehicles.value = vehicleRows
     drivers.value = driverRows
   } catch (error) {
@@ -76,6 +66,13 @@ async function load(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+function reset(): void {
+  filter.plate = ''
+  filter.availability = undefined
+  filter.lifecycle = undefined
+  filter.owner_type = undefined
 }
 
 function report(error: unknown, fallback: string): void {
@@ -89,27 +86,22 @@ function report(error: unknown, fallback: string): void {
 
 function openCreate(): void {
   Object.assign(createForm, {
-    plate_no: '',
-    vehicle_type: '厢式货车',
-    length_m: 4.2,
-    max_load_kg: 5000,
-    owner_type: '公司',
-    owner_driver_id: null,
-    document_status: '待审核',
+    plate_no: '', vehicle_type: '厢式货车', length_m: 4.2, max_load_kg: 5000,
+    owner_type: '公司', owner_driver_id: null, document_status: '待审核',
   })
-  createVisible.value = true
-}
-
-function onOwnerTypeChange(): void {
-  if (createForm.owner_type === '公司') createForm.owner_driver_id = null
+  createOpen.value = true
 }
 
 async function submitCreate(): Promise<void> {
+  if (!createForm.plate_no.trim()) {
+    ElMessage.warning('请填写车牌号')
+    return
+  }
   saving.value = true
   try {
     await createVehicle({ ...createForm })
     ElMessage.success('车辆已登记并纳入本公司管理')
-    createVisible.value = false
+    createOpen.value = false
     await load()
   } catch (error) {
     report(error, '登记车辆失败')
@@ -121,7 +113,7 @@ async function submitCreate(): Promise<void> {
 function openAssign(row: Vehicle): void {
   assigning.value = row
   assignForm.driver_account_id = row.current_driver_id ?? null
-  assignVisible.value = true
+  assignOpen.value = true
 }
 
 async function submitAssign(): Promise<void> {
@@ -131,7 +123,7 @@ async function submitAssign(): Promise<void> {
   try {
     await assignVehicle(target.id, assignForm.driver_account_id)
     ElMessage.success('车辆已分配给司机')
-    assignVisible.value = false
+    assignOpen.value = false
     await load()
   } catch (error) {
     report(error, '分配车辆失败')
@@ -145,7 +137,7 @@ function openStatus(row: Vehicle): void {
   statusForm.availability = row.availability
   statusForm.lifecycle = row.lifecycle
   statusForm.document_status = row.document_status
-  statusVisible.value = true
+  statusOpen.value = true
 }
 
 async function submitStatus(): Promise<void> {
@@ -153,17 +145,11 @@ async function submitStatus(): Promise<void> {
   if (!target) return
   saving.value = true
   try {
-    if (statusForm.availability !== target.availability) {
-      await setVehicleAvailability(target.id, statusForm.availability)
-    }
-    if (statusForm.lifecycle !== target.lifecycle) {
-      await setVehicleLifecycle(target.id, statusForm.lifecycle)
-    }
-    if (statusForm.document_status !== target.document_status) {
-      await setVehicleDocumentStatus(target.id, statusForm.document_status)
-    }
+    if (statusForm.availability !== target.availability) await setVehicleAvailability(target.id, statusForm.availability)
+    if (statusForm.lifecycle !== target.lifecycle) await setVehicleLifecycle(target.id, statusForm.lifecycle)
+    if (statusForm.document_status !== target.document_status) await setVehicleDocumentStatus(target.id, statusForm.document_status)
     ElMessage.success('车辆状态已更新')
-    statusVisible.value = false
+    statusOpen.value = false
     await load()
   } catch (error) {
     report(error, '更新车辆状态失败')
@@ -171,186 +157,149 @@ async function submitStatus(): Promise<void> {
     saving.value = false
   }
 }
+
+onMounted(load)
 </script>
 
 <template>
-  <section class="vehicles">
-    <div class="header-row">
-      <div>
-        <h1 class="page-title">车辆管理</h1>
-        <p class="page-note">公司车辆与司机个人车辆统一在册；可用性与生命周期为两个独立维度。</p>
+  <section>
+    <PageHeader title="车辆管理" :subtitle="`在册车辆 ${vehicles.filter((v) => v.lifecycle === '在册').length} 台 · 可用 ${vehicles.filter((v) => v.availability === '可用').length} / 占用 ${vehicles.filter((v) => v.availability === '占用中').length} / 暂停使用 ${vehicles.filter((v) => v.availability === '暂停使用').length}`">
+      <template #actions><el-button type="primary" @click="openCreate">登记车辆</el-button></template>
+    </PageHeader>
+
+    <FilterPanel>
+      <div class="filter-grid">
+        <div class="field"><label class="field__label" for="vh-plate">车牌号</label><el-input id="vh-plate" v-model="filter.plate" placeholder="请输入车牌号" clearable /></div>
+        <div class="field">
+          <label class="field__label" for="vh-avail">可用性</label>
+          <el-select id="vh-avail" v-model="filter.availability" placeholder="全部" clearable>
+            <el-option v-for="item in ['可用', '占用中', '暂停使用']" :key="item" :label="item" :value="item" />
+          </el-select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="vh-life">生命周期</label>
+          <el-select id="vh-life" v-model="filter.lifecycle" placeholder="全部" clearable>
+            <el-option v-for="item in ['在册', '维修中', '已停用']" :key="item" :label="item" :value="item" />
+          </el-select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="vh-owner">归属</label>
+          <el-select id="vh-owner" v-model="filter.owner_type" placeholder="全部" clearable>
+            <el-option label="公司自有" value="公司" /><el-option label="司机自带" value="司机" />
+          </el-select>
+        </div>
       </div>
-      <el-button type="primary" @click="openCreate">登记车辆</el-button>
-    </div>
+      <div class="filter-actions">
+        <el-button @click="reset">重置</el-button>
+      </div>
+    </FilterPanel>
 
-    <div class="filter-row">
-      <el-select v-model="filter.availability" placeholder="可用性" clearable class="filter">
-        <el-option v-for="item in ['可用', '占用中', '暂停使用']" :key="item" :value="item" />
-      </el-select>
-      <el-select v-model="filter.lifecycle" placeholder="生命周期" clearable class="filter">
-        <el-option v-for="item in ['在册', '维修中', '已停用']" :key="item" :value="item" />
-      </el-select>
-      <el-select v-model="filter.owner_type" placeholder="实际所有者" clearable class="filter">
-        <el-option v-for="item in ['公司', '司机']" :key="item" :value="item" />
-      </el-select>
-      <el-checkbox v-model="filter.assignable">仅看可分配</el-checkbox>
-      <el-button @click="load">筛选</el-button>
-    </div>
+    <section class="panel">
+      <div class="panel-head"><span class="panel-title">车辆列表</span><span class="panel-hint">可用性与生命周期为两个独立维度；维修中或已停用车辆不可派单</span></div>
+      <div class="panel-body panel-body--tight">
+        <EmptyState v-if="!filtered().length" text="暂无车辆，点击「登记车辆」添加。" />
+        <div v-else class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr><th class="num">车牌号</th><th>类型 / 车长</th><th class="num">最大载重</th><th>归属 / 实际车主</th><th>当前司机</th><th>可用性</th><th>生命周期</th><th class="ops">操作</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in filtered()" :key="row.id">
+                <td class="num">{{ row.plate_no }}</td>
+                <td>{{ displayVehicleType(row.vehicle_type) }} / {{ row.length_m }} 米</td>
+                <td class="num">{{ row.max_load_kg / 1000 }} 吨</td>
+                <td>{{ row.owner_type === '公司' ? '公司自有' : `司机自带 / ${row.actual_owner}` }}</td>
+                <td>{{ row.current_driver || '—' }}</td>
+                <td><StatusPill :text="row.availability" /></td>
+                <td><StatusPill :text="row.lifecycle" /></td>
+                <td class="ops">
+                  <el-button type="primary" link @click="openStatus(row)">编辑</el-button>
+                  <el-button type="primary" link @click="openAssign(row)">分配司机</el-button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pagination"><span>共 {{ filtered().length }} 条</span></div>
+        </div>
+      </div>
+    </section>
 
-    <el-table :data="vehicles" border v-loading="loading" class="table">
-      <el-table-column prop="plate_no" label="车牌" width="110" />
-      <el-table-column prop="vehicle_type" label="类型" width="100" />
-      <el-table-column prop="length_m" label="长度(米)" width="100" />
-      <el-table-column prop="max_load_kg" label="最大载重(千克)" width="130" />
-      <el-table-column prop="actual_owner" label="实际所有者" width="110" />
-      <el-table-column prop="current_driver" label="当前司机" width="110">
-        <template #default="{ row }: { row: Vehicle }">{{ row.current_driver || '—' }}</template>
-      </el-table-column>
-      <el-table-column prop="availability" label="可用性" width="100" />
-      <el-table-column prop="lifecycle" label="生命周期" width="100" />
-      <el-table-column prop="document_status" label="证件状态" width="100" />
-      <el-table-column label="可分配" width="90">
-        <template #default="{ row }: { row: Vehicle }">
-          <el-tag :type="row.assignable ? 'success' : 'info'" size="small">
-            {{ row.assignable ? '可分配' : '不可分配' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" fixed="right" width="180">
-        <template #default="{ row }: { row: Vehicle }">
-          <el-button
-            link
-            type="primary"
-            :disabled="!row.assignable || row.owner_type !== '公司'"
-            @click="openAssign(row)"
-          >分配</el-button>
-          <el-button link type="primary" @click="openStatus(row)">状态</el-button>
-        </template>
-      </el-table-column>
-      <template #empty>暂无车辆，点击「登记车辆」为本公司在册。</template>
-    </el-table>
-
-    <el-dialog v-model="createVisible" title="登记车辆" width="560px">
-      <el-form :model="createForm" label-width="110px">
-        <el-form-item label="车牌" required>
-          <el-input v-model="createForm.plate_no" maxlength="32" />
-        </el-form-item>
-        <el-form-item label="车辆类型" required>
-          <el-select v-model="createForm.vehicle_type">
-            <el-option v-for="item in ['厢式货车', '平板货车', '高栏货车', '冷藏车', '其他']" :key="item" :value="item" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="车长(米)" required>
-          <el-input-number v-model="createForm.length_m" :min="0.1" :max="30" :step="0.1" :precision="2" />
-        </el-form-item>
-        <el-form-item label="最大载重(千克)" required>
-          <el-input-number v-model="createForm.max_load_kg" :min="1" :max="100000" :step="100" />
-        </el-form-item>
-        <el-form-item label="实际所有者" required>
-          <el-select v-model="createForm.owner_type" @change="onOwnerTypeChange">
-            <el-option label="公司车辆" value="公司" />
-            <el-option label="司机个人车辆" value="司机" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="createForm.owner_type === '司机'" label="所属司机" required>
-          <el-select v-model="createForm.owner_driver_id" placeholder="选择本公司司机">
-            <el-option v-for="driver in drivers" :key="driver.account_id" :label="`${driver.name}（${driver.phone}）`" :value="driver.account_id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="证件状态">
-          <el-select v-model="createForm.document_status">
-            <el-option v-for="item in ['待审核', '有效', '已过期']" :key="item" :value="item" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submitCreate">登记</el-button>
+    <DetailDrawer v-model="createOpen" title="登记车辆">
+      <template #body>
+        <NoticeBar tone="warning">车辆转籍由平台管理员执行，且仅限无进行中任务的车辆。</NoticeBar>
+        <form class="drawer-form">
+          <div class="field"><label class="field__label"><span class="field__req">*</span>车牌号</label><el-input v-model="createForm.plate_no" /></div>
+          <div class="field">
+            <label class="field__label"><span class="field__req">*</span>车辆类型</label>
+            <el-select v-model="createForm.vehicle_type" style="width: 100%">
+              <el-option v-for="item in VEHICLE_TYPE_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+          </div>
+          <div class="field"><label class="field__label">车长（米）</label><el-input-number v-model="createForm.length_m" :min="1" :step="0.1" style="width: 100%" /></div>
+          <div class="field"><label class="field__label">最大载重（kg）</label><el-input-number v-model="createForm.max_load_kg" :min="1" :step="500" style="width: 100%" /></div>
+          <div class="field">
+            <label class="field__label">归属</label>
+            <el-radio-group v-model="createForm.owner_type">
+              <el-radio value="公司">公司自有</el-radio><el-radio value="司机">司机自带</el-radio>
+            </el-radio-group>
+          </div>
+          <div v-if="createForm.owner_type === '司机'" class="field">
+            <label class="field__label">实际车主</label>
+            <el-select v-model="createForm.owner_driver_id" placeholder="全部" style="width: 100%">
+              <el-option v-for="driver in drivers" :key="driver.account_id" :label="driver.name" :value="driver.account_id" />
+            </el-select>
+          </div>
+        </form>
       </template>
-    </el-dialog>
-
-    <el-dialog v-model="assignVisible" title="分配车辆" width="480px">
-      <p class="dialog-note">仅公司名下、可用且在册的车辆可分配；个人车辆默认关联所属司机。</p>
-      <el-form label-width="100px">
-        <el-form-item label="司机">
-          <el-select v-model="assignForm.driver_account_id" placeholder="选择本公司司机">
-            <el-option v-for="driver in drivers" :key="driver.account_id" :label="`${driver.name}（${driver.phone}）`" :value="driver.account_id" />
-          </el-select>
-        </el-form-item>
-      </el-form>
       <template #footer>
-        <el-button @click="assignVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submitAssign">分配</el-button>
+        <el-button @click="createOpen = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="submitCreate">保存</el-button>
       </template>
-    </el-dialog>
+    </DetailDrawer>
 
-    <el-dialog v-model="statusVisible" title="设置车辆状态" width="480px">
-      <p class="dialog-note">可用性与生命周期相互独立；维修中、已停用或暂停使用的车辆不可派新任务。</p>
-      <el-form label-width="100px">
-        <el-form-item label="可用性">
-          <el-select v-model="statusForm.availability">
-            <el-option v-for="item in ['可用', '占用中', '暂停使用']" :key="item" :value="item" />
+    <DetailDrawer v-model="assignOpen" title="分配司机">
+      <template #body>
+        <div class="field">
+          <label class="field__label">司机</label>
+          <el-select v-model="assignForm.driver_account_id" placeholder="全部" style="width: 100%">
+            <el-option v-for="driver in drivers" :key="driver.account_id" :label="`${driver.name} · ${driver.availability} · ${driver.employment}`" :value="driver.account_id" />
           </el-select>
-        </el-form-item>
-        <el-form-item label="生命周期">
-          <el-select v-model="statusForm.lifecycle">
-            <el-option v-for="item in ['在册', '维修中', '已停用']" :key="item" :value="item" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="证件状态">
-          <el-select v-model="statusForm.document_status">
-            <el-option v-for="item in ['待审核', '有效', '已过期']" :key="item" :value="item" />
-          </el-select>
-        </el-form-item>
-      </el-form>
+        </div>
+      </template>
       <template #footer>
-        <el-button @click="statusVisible = false">取消</el-button>
+        <el-button @click="assignOpen = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="submitAssign">确认分配</el-button>
+      </template>
+    </DetailDrawer>
+
+    <DetailDrawer v-model="statusOpen" :title="`车辆状态 · ${statusTarget?.plate_no ?? ''}`">
+      <template #body>
+        <form class="drawer-form">
+          <div class="field"><label class="field__label">可用性</label>
+            <el-select v-model="statusForm.availability" style="width: 100%">
+              <el-option v-for="item in ['可用', '占用中', '暂停使用']" :key="item" :label="item" :value="item" />
+            </el-select>
+          </div>
+          <div class="field"><label class="field__label">生命周期</label>
+            <el-select v-model="statusForm.lifecycle" style="width: 100%">
+              <el-option v-for="item in ['在册', '维修中', '已停用']" :key="item" :label="item" :value="item" />
+            </el-select>
+          </div>
+          <div class="field"><label class="field__label">证件状态</label>
+            <el-select v-model="statusForm.document_status" style="width: 100%">
+              <el-option v-for="item in ['待审核', '有效', '已过期']" :key="item" :label="item" :value="item" />
+            </el-select>
+          </div>
+        </form>
+      </template>
+      <template #footer>
+        <el-button @click="statusOpen = false">取消</el-button>
         <el-button type="primary" :loading="saving" @click="submitStatus">保存</el-button>
       </template>
-    </el-dialog>
+    </DetailDrawer>
   </section>
 </template>
 
 <style scoped>
-.vehicles {
-  padding: var(--space-2) 0;
-}
-
-.header-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.page-title {
-  margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-}
-
-.page-note {
-  margin: var(--space-1) 0 var(--space-6);
-  color: var(--color-text-muted);
-}
-
-.filter-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-}
-
-.filter {
-  width: 150px;
-}
-
-.table {
-  width: 100%;
-}
-
-.dialog-note {
-  margin: 0 0 var(--space-4);
-  color: var(--color-text-muted);
-}
+.drawer-form { padding-top: var(--space-4); }
 </style>

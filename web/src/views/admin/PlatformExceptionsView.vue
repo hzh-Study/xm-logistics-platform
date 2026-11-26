@@ -2,41 +2,45 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as adminApi from '@/api/admin'
-import type {
-  PlatformException,
-  PlatformExceptionCategory,
-  PlatformExceptionView,
-  PlatformResult,
-} from '@/types/admin'
+import PageHeader from '@/components/PageHeader.vue'
+import FilterPanel from '@/components/FilterPanel.vue'
+import DetailDrawer from '@/components/DetailDrawer.vue'
+import NoticeBar from '@/components/NoticeBar.vue'
+import StatusPill from '@/components/StatusPill.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import type { PlatformException, PlatformExceptionCategory, PlatformExceptionView, PlatformResult } from '@/types/admin'
 
-const categories: PlatformExceptionCategory[] = [
-  '投诉',
-  '订单纠纷',
-  '公司违规',
-  '司机违规',
-  '车辆异常',
-  '任务长期未完成',
-  '费用纠纷',
-]
+const categories: PlatformExceptionCategory[] = ['投诉', '订单纠纷', '公司违规', '司机违规', '车辆异常', '任务长期未完成', '费用纠纷']
 const results: PlatformResult[] = ['已处理', '已调解', '已处罚', '已驳回', '已归档']
+
+const CATEGORY_LABELS: Record<string, string> = {
+  公司违规: '物流公司违规', 任务长期未完成: '任务停滞', 费用纠纷: '费用争议',
+}
 
 const rows = ref<PlatformException[]>([])
 const loading = ref(false)
 const filter = reactive({ category: '' as PlatformExceptionCategory | '' })
-const createVisible = ref(false)
-const detailVisible = ref(false)
+const createOpen = ref(false)
+const saving = ref(false)
+const detailOpen = ref(false)
 const detail = ref<PlatformExceptionView | null>(null)
 
 const createForm = reactive({
-  category: '投诉' as PlatformExceptionCategory,
-  subject: '',
-  detail: '',
+  category: '投诉' as PlatformExceptionCategory, subject: '', detail: '',
   subject_account_id: undefined as number | undefined,
   order_id: undefined as number | undefined,
   task_id: undefined as number | undefined,
   vehicle_id: undefined as number | undefined,
 })
 const handlingForm = reactive({ result: '已处理' as PlatformResult, reason: '', detail: '' })
+
+function displayCategory(value: string): string {
+  return CATEGORY_LABELS[value] ?? value
+}
+
+function stamp(value: string): string {
+  return value ? value.replace('T', ' ').slice(0, 16) : '—'
+}
 
 function errorText(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
@@ -54,14 +58,11 @@ async function load(): Promise<void> {
 }
 
 function openCreate(): void {
-  createForm.category = '投诉'
-  createForm.subject = ''
-  createForm.detail = ''
-  createForm.subject_account_id = undefined
-  createForm.order_id = undefined
-  createForm.task_id = undefined
-  createForm.vehicle_id = undefined
-  createVisible.value = true
+  Object.assign(createForm, {
+    category: '投诉', subject: '', detail: '', subject_account_id: undefined,
+    order_id: undefined, task_id: undefined, vehicle_id: undefined,
+  })
+  createOpen.value = true
 }
 
 async function submitCreate(): Promise<void> {
@@ -69,21 +70,16 @@ async function submitCreate(): Promise<void> {
     ElMessage.warning('对象描述与异常说明必填')
     return
   }
+  saving.value = true
   try {
-    await adminApi.createPlatformException({
-      category: createForm.category,
-      subject: createForm.subject,
-      detail: createForm.detail,
-      subject_account_id: createForm.subject_account_id,
-      order_id: createForm.order_id,
-      task_id: createForm.task_id,
-      vehicle_id: createForm.vehicle_id,
-    })
+    await adminApi.createPlatformException({ ...createForm })
     ElMessage.success('平台异常已登记')
-    createVisible.value = false
+    createOpen.value = false
     await load()
   } catch (error) {
     ElMessage.error(errorText(error, '登记平台异常失败'))
+  } finally {
+    saving.value = false
   }
 }
 
@@ -93,7 +89,7 @@ async function openDetail(row: PlatformException): Promise<void> {
     handlingForm.result = '已处理'
     handlingForm.reason = ''
     handlingForm.detail = ''
-    detailVisible.value = true
+    detailOpen.value = true
   } catch (error) {
     ElMessage.error(errorText(error, '读取平台异常详情失败'))
   }
@@ -104,12 +100,9 @@ async function submitHandling(): Promise<void> {
     ElMessage.warning('处理结果原因必填')
     return
   }
+  saving.value = true
   try {
-    await adminApi.appendPlatformHandling(detail.value.exception.id, {
-      result: handlingForm.result,
-      reason: handlingForm.reason,
-      detail: handlingForm.detail,
-    })
+    await adminApi.appendPlatformHandling(detail.value.exception.id, { ...handlingForm })
     ElMessage.success('异常处理记录已追加')
     detail.value = await adminApi.fetchPlatformException(detail.value.exception.id)
     handlingForm.reason = ''
@@ -117,6 +110,8 @@ async function submitHandling(): Promise<void> {
     await load()
   } catch (error) {
     ElMessage.error(errorText(error, '追加处理记录失败'))
+  } finally {
+    saving.value = false
   }
 }
 
@@ -124,164 +119,114 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="platform-exceptions">
-    <h1 class="page-title">平台异常管理</h1>
-    <p class="page-note">处理结果以追加方式写入，原始异常记录与既有处理记录均不覆盖。</p>
+  <section>
+    <PageHeader title="平台异常管理" subtitle="投诉 / 纠纷 / 违规 / 停滞 / 费用争议 · 仅可追加异常处理记录">
+      <template #actions><el-button type="primary" @click="openCreate">登记异常</el-button></template>
+    </PageHeader>
 
-    <div class="toolbar">
-      <el-select v-model="filter.category" class="field" placeholder="全部类别" clearable>
-        <el-option v-for="category in categories" :key="category" :label="category" :value="category" />
-      </el-select>
-      <el-button type="primary" @click="load">查询</el-button>
-      <el-button @click="openCreate">登记异常</el-button>
-    </div>
-
-    <el-table :data="rows" v-loading="loading" row-key="id">
-      <el-table-column prop="exception_no" label="异常编号" width="170" />
-      <el-table-column label="类别" width="120">
-        <template #default="{ row }">
-          <el-tag type="warning">{{ row.category }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="subject" label="反映对象" />
-      <el-table-column prop="detail" label="异常说明" show-overflow-tooltip />
-      <el-table-column prop="actor" label="登记角色" width="100" />
-      <el-table-column prop="created_at" label="登记时间" width="200" />
-      <el-table-column label="操作" width="140">
-        <template #default="{ row }">
-          <el-button type="primary" link @click="openDetail(row)">处理 / 详情</el-button>
-        </template>
-      </el-table-column>
-      <template #empty><span>暂无符合条件的平台异常。</span></template>
-    </el-table>
-
-    <el-dialog v-model="createVisible" title="登记平台异常" width="560px">
-      <el-form label-position="top" class="form">
-        <el-form-item label="异常类别">
-          <el-select v-model="createForm.category" class="field">
-            <el-option v-for="category in categories" :key="category" :label="category" :value="category" />
+    <FilterPanel>
+      <div class="filter-grid">
+        <div class="field">
+          <label class="field__label" for="pe-cat">异常类型</label>
+          <el-select id="pe-cat" v-model="filter.category" placeholder="全部" clearable>
+            <el-option v-for="item in categories" :key="item" :label="displayCategory(item)" :value="item" />
           </el-select>
-        </el-form-item>
-        <el-form-item label="反映对象">
-          <el-input v-model="createForm.subject" maxlength="200" placeholder="如：某物流公司 / 订单" />
-        </el-form-item>
-        <el-form-item label="异常说明">
-          <el-input v-model="createForm.detail" type="textarea" :rows="3" maxlength="2000" placeholder="描述异常情况" />
-        </el-form-item>
-        <el-form-item label="涉及主体账号 id（可选，用于站内通知）">
-          <el-input-number v-model="createForm.subject_account_id" :min="1" controls-position="right" />
-        </el-form-item>
-        <el-form-item label="关联订单 / 任务 / 车辆 id（可选）">
-          <div class="inline">
-            <el-input-number v-model="createForm.order_id" :min="1" controls-position="right" placeholder="订单 id" />
-            <el-input-number v-model="createForm.task_id" :min="1" controls-position="right" placeholder="任务 id" />
-            <el-input-number v-model="createForm.vehicle_id" :min="1" controls-position="right" placeholder="车辆 id" />
-          </div>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitCreate">登记</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="detailVisible" title="平台异常处理" width="720px">
-      <template v-if="detail">
-        <div class="original">
-          <p class="detail-row">异常编号：{{ detail.exception.exception_no }} · 类别：{{ detail.exception.category }}</p>
-          <p class="detail-row">反映对象：{{ detail.exception.subject }}</p>
-          <p class="detail-row">异常说明：{{ detail.exception.detail }}</p>
-          <p class="detail-row">登记角色：{{ detail.exception.actor }} · 登记时间：{{ detail.exception.created_at }}</p>
         </div>
+      </div>
+      <div class="filter-actions"><el-button type="primary" @click="load">查询</el-button></div>
+    </FilterPanel>
 
-        <h3 class="section-title">处理记录（追加，不覆盖）</h3>
-        <el-table :data="detail.handling_records" row-key="id" size="small">
-          <el-table-column prop="result" label="处理结果" width="100">
-            <template #default="{ row }"><el-tag type="success">{{ row.result }}</el-tag></template>
-          </el-table-column>
-          <el-table-column prop="reason" label="原因" show-overflow-tooltip />
-          <el-table-column prop="actor" label="处理角色" width="100" />
-          <el-table-column prop="handled_at" label="处理时间" width="200" />
-          <template #empty><span>尚无处理记录，可在下方追加。</span></template>
-        </el-table>
+    <section class="panel">
+      <div class="panel-head"><span class="panel-title">异常列表</span></div>
+      <div class="panel-body panel-body--tight">
+        <EmptyState v-if="!rows.length" text="暂无平台异常" />
+        <div v-else class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th class="num">异常编号</th><th>异常类型</th><th>关联主体 / 订单</th><th>上报人</th><th class="num">上报时间</th><th class="ops">操作</th></tr></thead>
+            <tbody>
+              <tr v-for="row in rows" :key="row.id">
+                <td class="num">{{ row.exception_no }}</td>
+                <td>{{ displayCategory(row.category) }}</td>
+                <td>{{ row.subject }}<div v-if="row.order_id" class="cell-sub">订单 #{{ row.order_id }}</div></td>
+                <td>{{ row.actor }}</td>
+                <td class="num">{{ stamp(row.created_at) }}</td>
+                <td class="ops"><el-button type="primary" link @click="openDetail(row)">处置</el-button></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pagination"><span>共 {{ rows.length }} 条</span></div>
+        </div>
+      </div>
+    </section>
 
-        <h3 class="section-title">追加处理记录</h3>
-        <el-form label-position="top" class="form">
-          <el-form-item label="处理结果">
-            <el-select v-model="handlingForm.result" class="field">
-              <el-option v-for="result in results" :key="result" :label="result" :value="result" />
+    <DetailDrawer v-model="createOpen" title="登记平台异常">
+      <template #body>
+        <form class="drawer-form">
+          <div class="field">
+            <label class="field__label"><span class="field__req">*</span>异常类型</label>
+            <el-select v-model="createForm.category" style="width: 100%">
+              <el-option v-for="item in categories" :key="item" :label="displayCategory(item)" :value="item" />
             </el-select>
-          </el-form-item>
-          <el-form-item label="处理原因">
-            <el-input v-model="handlingForm.reason" type="textarea" :rows="2" maxlength="1000" placeholder="写明处理依据与结论" />
-          </el-form-item>
-          <el-form-item label="处理说明（可选）">
-            <el-input v-model="handlingForm.detail" type="textarea" :rows="2" maxlength="2000" />
-          </el-form-item>
-        </el-form>
+          </div>
+          <div class="field"><label class="field__label"><span class="field__req">*</span>关联主体</label><el-input v-model="createForm.subject" placeholder="对象描述" /></div>
+          <div class="field"><label class="field__label"><span class="field__req">*</span>问题描述</label><el-input v-model="createForm.detail" type="textarea" :rows="4" /></div>
+          <div class="field"><label class="field__label">关联订单 ID</label><el-input v-model="createForm.order_id" placeholder="可选" /></div>
+          <div class="field"><label class="field__label">关联任务 ID</label><el-input v-model="createForm.task_id" placeholder="可选" /></div>
+          <div class="field"><label class="field__label">关联车辆 ID</label><el-input v-model="createForm.vehicle_id" placeholder="可选" /></div>
+        </form>
       </template>
       <template #footer>
-        <el-button @click="detailVisible = false">关闭</el-button>
-        <el-button type="primary" @click="submitHandling">追加处理记录</el-button>
+        <el-button @click="createOpen = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="submitCreate">登记</el-button>
       </template>
-    </el-dialog>
+    </DetailDrawer>
+
+    <DetailDrawer v-model="detailOpen" title="平台异常处置">
+      <template #body>
+        <template v-if="detail">
+          <NoticeBar tone="info">管理员只能追加异常处理记录，不能改写运输订单、任务、打卡或费用记录。</NoticeBar>
+          <dl class="kv section-gap">
+            <dt>异常类型</dt><dd>{{ displayCategory(detail.exception.category) }}</dd>
+            <dt>关联订单</dt><dd class="num">{{ detail.exception.order_id ? `订单 #${detail.exception.order_id}` : '—' }}</dd>
+            <dt>上报人</dt><dd>{{ detail.exception.actor }}</dd>
+            <dt>上报时间</dt><dd class="num">{{ stamp(detail.exception.created_at) }}</dd>
+            <dt>问题描述</dt><dd>{{ detail.exception.detail }}</dd>
+          </dl>
+          <div class="field section-gap">
+            <label class="field__label"><span class="field__req">*</span>处置结果</label>
+            <el-select v-model="handlingForm.result" style="width: 100%">
+              <el-option v-for="item in results" :key="item" :label="item" :value="item" />
+            </el-select>
+          </div>
+          <div class="field"><label class="field__label"><span class="field__req">*</span>原因</label><el-input v-model="handlingForm.reason" type="textarea" :rows="3" /></div>
+          <div class="field"><label class="field__label">补充说明</label><el-input v-model="handlingForm.detail" type="textarea" :rows="2" /></div>
+          <div v-if="detail.handling_records.length" class="records">
+            <h3 class="records-title">追加处理记录</h3>
+            <ul class="record-list">
+              <li v-for="record in detail.handling_records" :key="record.id">
+                <StatusPill :text="record.result" />
+                <span>{{ record.reason }}</span>
+                <span class="record-meta">{{ record.actor }} · {{ stamp(record.handled_at) }}</span>
+              </li>
+            </ul>
+          </div>
+        </template>
+      </template>
+      <template #footer>
+        <el-button @click="detailOpen = false">关闭</el-button>
+        <el-button type="primary" :loading="saving" @click="submitHandling">提交处置</el-button>
+      </template>
+    </DetailDrawer>
   </section>
 </template>
 
 <style scoped>
-.platform-exceptions {
-  padding: var(--space-2) 0;
-}
-
-.page-title {
-  margin: 0 0 var(--space-1);
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-}
-
-.page-note {
-  margin: 0 0 var(--space-6);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-}
-
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-}
-
-.field {
-  width: 200px;
-}
-
-.form {
-  margin-top: var(--space-2);
-}
-
-.inline {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.original {
-  padding: var(--space-3);
-  background: var(--color-bg);
-  border-radius: var(--radius);
-}
-
-.detail-row {
-  margin: 0 0 var(--space-1);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-}
-
-.section-title {
-  margin: var(--space-4) 0 var(--space-2);
-  font-size: var(--font-size-md);
-  font-weight: 600;
-}
+.drawer-form { padding-top: var(--space-4); }
+.section-gap { margin-top: var(--space-4); }
+.records { margin-top: var(--space-5); }
+.records-title { margin: 0 0 var(--space-2); font-size: var(--font-size-sm); font-weight: 600; }
+.record-list { margin: 0; padding: 0; list-style: none; }
+.record-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border); font-size: var(--font-size-sm); }
+.record-list li:last-child { border-bottom: 0; }
+.record-meta { color: var(--color-text-3); font-size: var(--font-size-xs); }
 </style>

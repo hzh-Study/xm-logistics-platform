@@ -1,25 +1,42 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import * as orderApi from '@/api/order'
+import PageHeader from '@/components/PageHeader.vue'
+import FilterPanel from '@/components/FilterPanel.vue'
+import DetailDrawer from '@/components/DetailDrawer.vue'
+import StatusPill from '@/components/StatusPill.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import PhotoGrid from '@/components/PhotoGrid.vue'
 import type { Order, PoolFilter } from '@/types/order'
 
 const rows = ref<Order[]>([])
 const loading = ref(false)
 const detail = ref<Order | null>(null)
+const detailOpen = ref(false)
+const acceptTarget = ref<Order | null>(null)
+const acceptOpen = ref(false)
+const accepting = ref(false)
 const filter = reactive<PoolFilter>({})
 
-function place(snapshot: {
-  province: string
-  city: string
-  district: string
-  detail_address: string
-}): string {
+const CARGO_TYPES = ['钢材', '建材', '机电设备', '化工品', '冷链食品']
+const VEHICLE_TYPES = ['平板车', '厢式货车', '高栏车']
+
+function place(snapshot: { province: string; city: string; district: string; detail_address: string }): string {
   return `${snapshot.province}${snapshot.city}${snapshot.district}${snapshot.detail_address}`
 }
 
+function shortPlace(snapshot: { province: string; city: string }): string {
+  return `${snapshot.province}${snapshot.city}`
+}
+
 function quote(row: Order): string {
-  return row.quote_method === '固定' ? `${row.quote_amount_yuan} 元` : row.quote_method
+  return `¥ ${row.quote_amount_yuan || '0.00'}${row.quote_method === '固定' ? '（固定价）' : ''}`
+}
+
+function stamp(value: string): string {
+  return value ? value.replace('T', ' ').slice(0, 16) : '—'
 }
 
 async function load(): Promise<void> {
@@ -34,37 +51,37 @@ async function load(): Promise<void> {
 }
 
 function reset(): void {
-  for (const key of Object.keys(filter) as (keyof PoolFilter)[]) {
-    delete filter[key]
-  }
+  for (const key of Object.keys(filter) as (keyof PoolFilter)[]) delete filter[key]
   void load()
 }
 
 async function openDetail(order: Order): Promise<void> {
   try {
     detail.value = await orderApi.fetchPoolOrder(order.id)
+    detailOpen.value = true
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '读取货源详情失败')
   }
 }
 
-async function accept(order: Order): Promise<void> {
+function askAccept(order: Order): void {
+  acceptTarget.value = order
+  acceptOpen.value = true
+}
+
+async function accept(): Promise<void> {
+  const target = acceptTarget.value
+  if (!target) return
+  accepting.value = true
   try {
-    await ElMessageBox.confirm(
-      `确认承接货源 ${order.order_no}？承接成功后将唯一归属本公司，其他物流公司无法再次承接。`,
-      '承接确认',
-      { type: 'warning', confirmButtonText: '确认承接', cancelButtonText: '取消' },
-    )
-  } catch {
-    return
-  }
-  try {
-    const result = await orderApi.acceptOrder(order.id)
+    const result = await orderApi.acceptOrder(target.id)
     ElMessage.success(`承接成功，订单 ${result.order_no} 已归属本公司`)
-    detail.value = null
+    detailOpen.value = false
     await load()
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '承接失败')
+  } finally {
+    accepting.value = false
   }
 }
 
@@ -72,130 +89,104 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="pool">
-    <div class="toolbar">
-      <h1 class="page-title">订单池</h1>
-      <span class="hint">仅展示待承接货源，先到先得</span>
-    </div>
+  <section>
+    <PageHeader title="订单池" :subtitle="`当前可承接货源 ${rows.length} 条 · 先到先得`">
+      <template #actions><el-button @click="load">刷新</el-button></template>
+    </PageHeader>
 
-    <div class="toolbar">
-      <el-input v-model="filter.shipping_place" class="field" placeholder="发货地" clearable />
-      <el-input v-model="filter.receiving_place" class="field" placeholder="收货地" clearable />
-      <el-input v-model="filter.cargo_type" class="field" placeholder="货物类型" clearable />
-      <el-input v-model="filter.vehicle_type" class="field" placeholder="车辆类型" clearable />
-      <el-input v-model="filter.weight" class="field" placeholder="重量" clearable />
-      <el-input v-model="filter.quote_min_yuan" class="field" placeholder="最低运费(元)" clearable />
-      <el-input v-model="filter.quote_max_yuan" class="field" placeholder="最高运费(元)" clearable />
-      <el-input v-model="filter.published_from" class="field" placeholder="发布起(ISO 时间)" clearable />
-      <el-input v-model="filter.published_to" class="field" placeholder="发布止(ISO 时间)" clearable />
-      <el-button type="primary" @click="load">查询</el-button>
-      <el-button @click="reset">重置</el-button>
-    </div>
+    <FilterPanel>
+      <div class="filter-grid">
+        <div class="field"><label class="field__label" for="pool-ship">发货地</label><el-input id="pool-ship" v-model="filter.shipping_place" placeholder="请输入发货地" clearable /></div>
+        <div class="field"><label class="field__label" for="pool-recv">收货地</label><el-input id="pool-recv" v-model="filter.receiving_place" placeholder="请输入收货地" clearable /></div>
+        <div class="field">
+          <label class="field__label" for="pool-type">货物类型</label>
+          <el-select id="pool-type" v-model="filter.cargo_type" placeholder="全部" clearable>
+            <el-option v-for="item in CARGO_TYPES" :key="item" :label="item" :value="item" />
+          </el-select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="pool-vehicle">车型</label>
+          <el-select id="pool-vehicle" v-model="filter.vehicle_type" placeholder="全部" clearable>
+            <el-option v-for="item in VEHICLE_TYPES" :key="item" :label="item" :value="item" />
+          </el-select>
+        </div>
+        <div class="field"><label class="field__label" for="pool-weight">重量（吨）</label><el-input id="pool-weight" v-model="filter.weight" placeholder="如：20" clearable /></div>
+        <div class="field"><label class="field__label">发布时间</label><el-date-picker v-model="filter.published_from" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" class="date-input" /></div>
+        <div class="field"><label class="field__label">发布时间（止）</label><el-date-picker v-model="filter.published_to" type="date" value-format="YYYY-MM-DD" placeholder="结束日期" class="date-input" /></div>
+        <div class="field"><label class="field__label" for="pool-qmin">运费下限</label><el-input id="pool-qmin" v-model="filter.quote_min_yuan" placeholder="元" clearable /></div>
+        <div class="field"><label class="field__label" for="pool-qmax">运费上限</label><el-input id="pool-qmax" v-model="filter.quote_max_yuan" placeholder="元" clearable /></div>
+      </div>
+      <div class="filter-actions">
+        <el-button @click="reset">重置</el-button>
+        <el-button type="primary" @click="load">查询</el-button>
+      </div>
+    </FilterPanel>
 
-    <el-table :data="rows" v-loading="loading" row-key="id">
-      <el-table-column prop="order_no" label="订单号" width="170" />
-      <el-table-column prop="cargo_name" label="货物名称" />
-      <el-table-column prop="cargo_type" label="货物类型" />
-      <el-table-column prop="weight" label="重量" />
-      <el-table-column label="发货地">
-        <template #default="{ row }">{{ place(row.shipping_snapshot) }}</template>
-      </el-table-column>
-      <el-table-column label="收货地">
-        <template #default="{ row }">{{ place(row.receiving_snapshot) }}</template>
-      </el-table-column>
-      <el-table-column prop="vehicle_type" label="车型要求" />
-      <el-table-column label="运费报价">
-        <template #default="{ row }">{{ quote(row) }}</template>
-      </el-table-column>
-      <el-table-column prop="created_at" label="发布时间" width="180" />
-      <el-table-column label="操作" width="140">
-        <template #default="{ row }">
-          <el-button type="primary" link @click="openDetail(row)">详情</el-button>
-          <el-button type="primary" link @click="accept(row)">承接</el-button>
+    <section class="panel">
+      <div class="panel-head"><span class="panel-title">可承接货源</span><span class="panel-hint">货源为待承接运输订单的视图 · V1 先到先得，无竞价</span></div>
+      <div class="panel-body panel-body--tight">
+        <EmptyState v-if="!rows.length" text="暂无待承接的运输订单" />
+        <div v-else class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr><th class="num">订单编号</th><th>货物</th><th>发货地</th><th>收货地</th><th>车辆要求</th><th class="num">运费报价</th><th class="num">发布时间</th><th class="ops">操作</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in rows" :key="row.id">
+                <td class="num">{{ row.order_no }}</td>
+                <td>{{ [row.cargo_name, row.quantity, row.volume].filter(Boolean).join(' · ') }}</td>
+                <td>{{ shortPlace(row.shipping_snapshot) }}</td>
+                <td>{{ shortPlace(row.receiving_snapshot) }}</td>
+                <td>{{ [row.vehicle_type, row.vehicle_length].filter(Boolean).join(' / ') }}</td>
+                <td class="num">{{ quote(row) }}</td>
+                <td class="num">{{ stamp(row.created_at) }}</td>
+                <td class="ops">
+                  <el-button type="primary" link @click="openDetail(row)">查看货源</el-button>
+                  <el-button type="primary" link @click="askAccept(row)">承接</el-button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pagination"><span>共 {{ rows.length }} 条</span></div>
+        </div>
+      </div>
+    </section>
+
+    <DetailDrawer v-model="detailOpen" :title="`货源详情 · ${detail?.order_no ?? ''}`">
+      <template #body>
+        <template v-if="detail">
+          <dl class="kv">
+            <dt>订单状态</dt><dd><StatusPill :text="detail.status" /></dd>
+            <dt>货物</dt><dd>{{ [detail.cargo_name, detail.quantity, detail.volume].filter(Boolean).join(' · ') }}</dd>
+            <dt>发货快照</dt><dd>{{ place(detail.shipping_snapshot) }} · {{ detail.shipping_snapshot.contact }} {{ detail.shipping_snapshot.phone }}</dd>
+            <dt>收货快照</dt><dd>{{ place(detail.receiving_snapshot) }} · {{ detail.receiving_snapshot.contact }} {{ detail.receiving_snapshot.phone }}</dd>
+            <dt>运输要求</dt><dd>{{ [detail.vehicle_type, detail.vehicle_length, detail.load_requirement && `载重 ${detail.load_requirement} 吨`, detail.rain_protection && '防雨', detail.special_loading && '特殊装卸'].filter(Boolean).join(' / ') }}</dd>
+            <dt>运费报价</dt><dd class="num">{{ quote(detail) }}（接受议价标记：{{ detail.accept_bargain ? '是' : '否' }}）</dd>
+            <dt>发布时间</dt><dd class="num">{{ stamp(detail.created_at) }}</dd>
+            <dt>备注</dt><dd>{{ detail.cargo_remarks || '—' }}</dd>
+          </dl>
+          <PhotoGrid v-if="detail.cargo_photos.length" :photos="detail.cargo_photos" />
+          <p class="accept-hint">承接前请确认：具备对应运力、有可用司机与车辆、时间可满足要求，并接受当前运费报价。</p>
         </template>
-      </el-table-column>
-      <template #empty>
-        <span>暂无待承接货源，请调整筛选条件后再试。</span>
-      </template>
-    </el-table>
-
-    <el-dialog v-model="detail" title="货源详情" width="760px">
-      <template v-if="detail">
-        <h3 class="detail-title">货物与要求</h3>
-        <p class="detail-row">
-          货物：{{ detail.cargo_name }} · {{ detail.cargo_type }} · {{ detail.quantity }} ·
-          {{ detail.weight }} · {{ detail.volume }}
-        </p>
-        <p class="detail-row">包装：{{ detail.packaging }}；备注：{{ detail.cargo_remarks || '无' }}</p>
-        <p class="detail-row">
-          运输要求：{{ detail.vehicle_type }} / {{ detail.vehicle_length }} /
-          {{ detail.load_requirement }}
-        </p>
-        <p class="detail-row">
-          特殊要求：{{ detail.cold_chain ? '冷链 ' : '' }}{{ detail.rain_protection ? '防雨 ' : ''
-          }}{{ detail.enclosed_body ? '厢式 ' : '' }}{{ detail.special_loading ? '特殊装载' : '' }}
-        </p>
-        <p class="detail-row">其他服务：{{ detail.other_services || '无' }}；要求备注：{{ detail.transport_remarks || '无' }}</p>
-        <p class="detail-row">货物照片：{{ detail.cargo_photos.join('、') || '无' }}</p>
-        <h3 class="detail-title">发货快照</h3>
-        <p class="detail-row">
-          {{ detail.shipping_snapshot.name }} · {{ detail.shipping_snapshot.contact }} ·
-          {{ detail.shipping_snapshot.phone }} · {{ place(detail.shipping_snapshot) }}
-        </p>
-        <h3 class="detail-title">收货快照</h3>
-        <p class="detail-row">
-          {{ detail.receiving_snapshot.name }} · {{ detail.receiving_snapshot.contact }} ·
-          {{ detail.receiving_snapshot.phone }} · {{ place(detail.receiving_snapshot) }}
-        </p>
-        <h3 class="detail-title">运费报价（仅货主与物流公司可见，不构成结算）</h3>
-        <p class="detail-row">
-          {{ detail.quote_method }} · {{ detail.quote_amount_yuan }} 元 ·
-          接受议价：{{ detail.accept_bargain ? '是' : '否' }} · {{ detail.quote_remarks || '无备注' }}
-        </p>
       </template>
       <template #footer>
-        <el-button @click="detail = null">关闭</el-button>
-        <el-button v-if="detail" type="primary" @click="accept(detail)">承接该订单</el-button>
+        <el-button @click="detailOpen = false">关闭</el-button>
+        <el-button v-if="detail" type="primary" :loading="accepting" @click="askAccept(detail)">确认承接</el-button>
       </template>
-    </el-dialog>
+    </DetailDrawer>
+
+    <ConfirmDialog
+      v-model="acceptOpen"
+      title="承接确认"
+      confirm-text="确认承接"
+      @confirm="accept"
+    >
+      确认承接货源 {{ acceptTarget?.order_no }}？承接成功后将唯一归属本公司，其他物流公司无法再次承接。
+    </ConfirmDialog>
   </section>
 </template>
 
 <style scoped>
-.pool {
-  padding: var(--space-2) 0;
-}
-
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-}
-
-.page-title {
-  margin: 0 var(--space-4) 0 0;
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-}
-
-.hint {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-}
-
-.field {
-  width: 160px;
-}
-
-.detail-title {
-  margin: var(--space-4) 0 var(--space-2);
-  font-size: var(--font-size-md);
-}
-
-.detail-row {
-  margin: 0 0 var(--space-1);
-  color: var(--color-text-muted);
-}
+.date-input { width: 100%; }
+.accept-hint { margin: var(--space-4) 0 0; font-size: var(--font-size-sm); color: var(--color-text-2); }
 </style>

@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>费用提交</title>
+<link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body>
+<div class="h5-stage"><div class="phone"><div class="h5-status"><span>9:41</span><span>信号 · Wi-Fi · 100%</span></div><div class="h5-nav">费用提交</div><div class="h5-scroll"><div class="notice notice-info" style="margin-bottom:12px"><svg class="icon " viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 9h8M8 13h8M12 6v12"/></svg><div>单次提交一笔报销费用，凭证与关联任务需填写完整。报销进度可在费用记录中查看。</div></div><div class="h5-card"><label class="h5-label"><span style="color:var(--error)">*</span>费用类型</label><select class="select" id="expenseType"><option>油费</option><option>过路费</option><option>停车费</option><option>维修</option><option>其它</option></select><div id="otherExpenseBox" style="display:none"><label class="h5-label">其它费用说明</label><input class="input" type="text" placeholder="请输入" value=""></div><label class="h5-label"><span style="color:var(--error)">*</span>金额（元）</label><input class="input" type="number" placeholder="请输入金额" value=""><label class="h5-label"><span style="color:var(--error)">*</span>关联运输任务</label><select class="select"><option>TASK-251120-0003 · 热轧钢板 · 上海青浦 → 昆山</option><option>TASK-251118-0002 · 水泥 · 嘉定 → 嘉兴</option></select><label class="h5-label"><span style="color:var(--error)">*</span>费用凭证</label><div class="h5-upload" data-act="upload"><svg class="icon " viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l2-2h4l2 2h4v12H4z"/><circle cx="12" cy="13" r="3"/></svg><span>上传凭证（支持多张）</span></div><label class="h5-label">费用说明</label><textarea class="textarea" placeholder="选填"></textarea></div></div><div class="h5-bottom"><a class="btn btn-secondary" href="h5-10-expense-records.html">费用记录</a><button class="btn btn-primary" onclick="submitAction('报销费用已提交，等待审核')">提交</button></div></div></div>
+<script src="assets/prototype.js"></script>
+</body>
+</html>

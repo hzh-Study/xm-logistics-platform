@@ -1,14 +1,36 @@
+/* Element Plus 主题覆盖：所有值引用 design token，不写死色值。 */
 :root {
-  --el-color-primary: #1664ff;
-  --el-color-primary-light-3: #4d8bff;
-  --el-color-primary-light-5: #80adff;
-  --el-color-primary-light-7: #b3ceff;
-  --el-color-primary-light-8: #cce0ff;
-  --el-color-primary-light-9: #e5efff;
-  --el-color-primary-dark-2: #0e52d8;
-  --el-color-success: #1f9d55;
-  --el-color-warning: #d97706;
-  --el-color-danger: #d92d20;
-  --el-border-radius-base: 5px;
+  --el-color-primary: var(--color-accent);
+  --el-color-primary-light-3: #4D8BFF;
+  --el-color-primary-light-5: #80ADFF;
+  --el-color-primary-light-7: #B3CEFF;
+  --el-color-primary-light-8: #CCE0FF;
+  --el-color-primary-light-9: var(--color-accent-soft);
+  --el-color-primary-dark-2: var(--color-accent-hover);
+
+  --el-color-success: var(--color-success);
+  --el-color-success-light-9: var(--color-success-soft);
+  --el-color-warning: var(--color-warning);
+  --el-color-warning-light-9: var(--color-warning-soft);
+  --el-color-danger: var(--color-error);
+  --el-color-danger-light-9: var(--color-error-soft);
+
+  --el-border-radius-base: var(--radius-control);
+  --el-border-radius-small: var(--radius-control);
   --el-font-family: var(--font-sans);
+  --el-font-size-base: var(--font-size-md);
+
+  --el-text-color-primary: var(--color-text);
+  --el-text-color-regular: var(--color-text-2);
+  --el-text-color-secondary: var(--color-text-3);
+  --el-border-color: var(--color-border);
+  --el-border-color-light: var(--color-border);
+  --el-border-color-lighter: var(--color-border);
+  --el-fill-color-blank: var(--color-surface);
+  --el-bg-color: var(--color-surface);
+  --el-bg-color-page: var(--color-bg);
+  --el-bg-color-overlay: var(--color-surface);
+  --el-box-shadow-light: var(--shadow-card);
+  --el-box-shadow: var(--shadow-pop);
+  --el-component-size: 36px;
 }

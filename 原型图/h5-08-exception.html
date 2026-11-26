@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>异常处理</title>
+<link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body>
+<div class="h5-stage"><div class="phone"><div class="h5-status"><span>9:41</span><span>信号 · Wi-Fi · 100%</span></div><div class="h5-nav">异常处理</div><div class="h5-scroll"><div class="h5-card"><div class="h5-card-title">上报运输异常</div><div class="h5-card-sub">TASK-251120-0003 · 上海青浦 → 江苏昆山</div><label class="h5-label"><span style="color:var(--error)">*</span>异常类型</label><select class="select"><option>车辆故障</option><option>事故</option><option>封路</option><option>拥堵</option><option>货物问题</option><option>预计延误</option><option>其它</option></select><label class="h5-label">现场照片</label><div class="h5-upload" data-act="upload"><svg class="icon " viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l2-2h4l2 2h4v12H4z"/><circle cx="12" cy="13" r="3"/></svg><span>点击上传现场照片</span></div><label class="h5-label"><span style="color:var(--error)">*</span>异常说明</label><textarea class="textarea" placeholder="请描述异常情况与当前位置"></textarea><div class="notice notice-info" style="margin-top:12px"><svg class="icon " viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 9v5M12 18h.01"/></svg><div>提交后由物流公司处置；车辆更换、司机更换等变更均由公司通过异常流程处理，司机不可自行换车。</div></div></div><div class="h5-card"><div class="h5-card-title">异常处理记录</div><div style="margin-top:8px"><div class="h5-row"><span class="k">EXC-251120-0002</span><span class="v">车辆故障 · 2026-11-21 10:14</span></div><div class="h5-row"><span class="k">处理结果</span><span class="v">—（待公司处置）</span></div></div><div class="help" style="margin-top:8px">处理结果为追加记录，原上报内容保留。</div></div></div><div class="h5-bottom"><button class="btn btn-primary" onclick="submitAction('异常已上报，等待物流公司处置')">提交异常</button></div></div></div>
+<script src="assets/prototype.js"></script>
+</body>
+</html>

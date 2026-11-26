@@ -2,27 +2,24 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as adminApi from '@/api/admin'
-import type { TransportTask, TaskStatus } from '@/types/dispatch'
+import PageHeader from '@/components/PageHeader.vue'
+import FilterPanel from '@/components/FilterPanel.vue'
+import DetailDrawer from '@/components/DetailDrawer.vue'
+import NoticeBar from '@/components/NoticeBar.vue'
+import StatusPill from '@/components/StatusPill.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import type { TaskStatus, TransportTask } from '@/types/dispatch'
 
 const rows = ref<TransportTask[]>([])
 const loading = ref(false)
 const detail = ref<TransportTask | null>(null)
-const filter = reactive({
-  status: '' as TaskStatus | '',
-  order_id: undefined as number | undefined,
-  task_no: '',
-})
+const detailOpen = ref(false)
+const filter = reactive({ status: '' as TaskStatus | '', order_id: undefined as number | undefined, task_no: '' })
+const statuses: TaskStatus[] = ['待司机确认', '待装货', '运输中', '待签收', '待确认完成', '已完成', '异常', '已拒绝']
 
-const statuses: TaskStatus[] = [
-  '待司机确认',
-  '待装货',
-  '运输中',
-  '待签收',
-  '待确认完成',
-  '已完成',
-  '异常',
-  '已拒绝',
-]
+function stamp(value: string | null): string {
+  return value ? value.replace('T', ' ').slice(0, 16) : '—'
+}
 
 async function load(): Promise<void> {
   loading.value = true
@@ -35,9 +32,17 @@ async function load(): Promise<void> {
   }
 }
 
+function reset(): void {
+  filter.status = ''
+  filter.order_id = undefined
+  filter.task_no = ''
+  void load()
+}
+
 async function openDetail(task: TransportTask): Promise<void> {
   try {
     detail.value = await adminApi.fetchPlatformTask(task.id)
+    detailOpen.value = true
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '读取任务详情失败')
   }
@@ -47,83 +52,71 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="tasks">
-    <h1 class="page-title">全平台运输任务</h1>
+  <section>
+    <PageHeader title="运输任务查询" subtitle="平台级只读查询 · 可查阅业务证据链" />
 
-    <div class="toolbar">
-      <el-input v-model="filter.task_no" class="field" placeholder="任务编号" clearable />
-      <el-select v-model="filter.status" class="field" placeholder="全部状态" clearable>
-        <el-option v-for="status in statuses" :key="status" :label="status" :value="status" />
-      </el-select>
-      <el-input-number
-        v-model="filter.order_id"
-        class="field"
-        :min="1"
-        controls-position="right"
-        placeholder="订单 id"
-      />
-      <el-button type="primary" @click="load">查询</el-button>
-    </div>
+    <FilterPanel>
+      <div class="filter-grid">
+        <div class="field"><label class="field__label" for="at-no">任务编号</label><el-input id="at-no" v-model="filter.task_no" placeholder="请输入任务编号" clearable /></div>
+        <div class="field"><label class="field__label" for="at-order">订单 ID</label><el-input id="at-order" v-model="filter.order_id" placeholder="请输入订单 ID" clearable /></div>
+        <div class="field">
+          <label class="field__label" for="at-status">任务状态</label>
+          <el-select id="at-status" v-model="filter.status" placeholder="全部" clearable>
+            <el-option v-for="item in statuses" :key="item" :label="item" :value="item" />
+          </el-select>
+        </div>
+      </div>
+      <div class="filter-actions">
+        <el-button @click="reset">重置</el-button>
+        <el-button type="primary" @click="load">查询</el-button>
+      </div>
+    </FilterPanel>
 
-    <el-table :data="rows" v-loading="loading" row-key="id">
-      <el-table-column prop="task_no" label="任务编号" width="180" />
-      <el-table-column prop="order_no" label="所属订单" width="180" />
-      <el-table-column prop="driver_name" label="执行司机" />
-      <el-table-column prop="vehicle_plate" label="执行车辆" />
-      <el-table-column label="状态">
-        <template #default="{ row }">
-          <el-tag :type="row.status === '已完成' ? 'success' : 'info'">{{ row.status }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="planned_load_at" label="计划装货" width="200" />
-      <el-table-column label="操作" width="90">
-        <template #default="{ row }">
-          <el-button type="primary" link @click="openDetail(row)">详情</el-button>
-        </template>
-      </el-table-column>
-      <template #empty><span>暂无符合条件的运输任务。</span></template>
-    </el-table>
+    <section class="panel">
+      <div class="panel-head"><span class="panel-title">任务列表</span><span class="panel-hint">管理员只读 · 不提供改写业务记录的按钮</span></div>
+      <div class="panel-body panel-body--tight">
+        <EmptyState v-if="!rows.length" text="暂无运输任务" />
+        <div v-else class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr><th class="num">任务编号</th><th>物流公司 / 司机</th><th>车辆</th><th>关联订单</th><th>任务状态</th><th class="num">计划送达</th><th class="ops">操作</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in rows" :key="row.id">
+                <td class="num">{{ row.task_no }}</td>
+                <td>公司 #{{ row.carrier_id }} / {{ row.driver_name }}</td>
+                <td class="num">{{ row.vehicle_plate }}</td>
+                <td class="num">{{ row.order_no }}</td>
+                <td><StatusPill :text="row.status" /></td>
+                <td class="num">{{ stamp(row.planned_deliver_at) }}</td>
+                <td class="ops"><el-button type="primary" link @click="openDetail(row)">查看</el-button></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pagination"><span>共 {{ rows.length }} 条</span></div>
+        </div>
+      </div>
+    </section>
 
-    <el-dialog v-model="detail" title="运输任务详情" width="680px">
-      <template v-if="detail">
-        <p class="detail-row">任务编号：{{ detail.task_no }} · 状态：{{ detail.status }}</p>
-        <p class="detail-row">所属订单：{{ detail.order_no }}（id {{ detail.order_id }}）</p>
-        <p class="detail-row">司机：{{ detail.driver_name }} · {{ detail.driver_phone }}</p>
-        <p class="detail-row">车辆：{{ detail.vehicle_plate }} · 公司账号 {{ detail.carrier_id }}</p>
-        <p class="detail-row">计划装货：{{ detail.planned_load_at }}</p>
-        <p class="detail-row">计划送达：{{ detail.planned_deliver_at }}</p>
-        <p class="detail-row">注意事项：{{ detail.notes || '无' }}</p>
-        <p class="detail-row">司机拒绝原因：{{ detail.reject_reason || '无' }}</p>
+    <DetailDrawer v-model="detailOpen" title="运输任务详情">
+      <template #body>
+        <NoticeBar v-if="detail" tone="info">管理员只读查看，打卡照片与费用凭证可查阅但不能修改。</NoticeBar>
+        <dl v-if="detail" class="kv section-gap">
+          <dt>任务编号</dt><dd class="num">{{ detail.task_no }}</dd>
+          <dt>任务状态</dt><dd><StatusPill :text="detail.status" /></dd>
+          <dt>关联订单</dt><dd class="num">{{ detail.order_no }}</dd>
+          <dt>司机 / 车辆</dt><dd>{{ detail.driver_name }} / {{ detail.vehicle_plate }}</dd>
+          <dt>计划装货</dt><dd class="num">{{ stamp(detail.planned_load_at) }}</dd>
+          <dt>计划送达</dt><dd class="num">{{ stamp(detail.planned_deliver_at) }}</dd>
+          <dt>接单时间</dt><dd class="num">{{ stamp(detail.accepted_at) }}</dd>
+          <dt>拒绝原因</dt><dd>{{ detail.reject_reason || '—' }}</dd>
+          <dt>派单备注</dt><dd>{{ detail.notes || '—' }}</dd>
+        </dl>
       </template>
-    </el-dialog>
+    </DetailDrawer>
   </section>
 </template>
 
 <style scoped>
-.tasks {
-  padding: var(--space-2) 0;
-}
-
-.page-title {
-  margin: 0 0 var(--space-6);
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-}
-
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-}
-
-.field {
-  width: 180px;
-}
-
-.detail-row {
-  margin: 0 0 var(--space-2);
-  color: var(--color-text-muted);
-}
+.section-gap { margin-top: var(--space-4); }
 </style>

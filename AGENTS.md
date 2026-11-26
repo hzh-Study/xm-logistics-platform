@@ -16,6 +16,10 @@ The five canonical triage roles are used verbatim as label strings. See `docs/ag
 
 Single-context: one root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain.md`.
 
+### UI prototype / image generation brief
+
+Generating UI prototypes or visual designs for this platform? Read `docs/ui-design-brief.md` — it carries the full page inventory, the modern-SaaS design system, role isolation, exact status labels, and the anti-AI-pattern checklist.
+
 ### Code review
 
 Reviewing code? Read `CODING_STANDARDS.md` for the cross-file judgement calls; mechanical rules are enforced by tests, not listed there.

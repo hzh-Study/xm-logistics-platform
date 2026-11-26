@@ -1,126 +1,120 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as adminApi from '@/api/admin'
+import PageHeader from '@/components/PageHeader.vue'
+import StatCard from '@/components/StatCard.vue'
+import NoticeBar from '@/components/NoticeBar.vue'
+import StatusPill from '@/components/StatusPill.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import type { AdminStats } from '@/types/admin'
+import type { Order } from '@/types/order'
 
-const router = useRouter()
 const stats = ref<AdminStats | null>(null)
+const orders = ref<Order[]>([])
+const loading = ref(false)
+
+const cards = computed(() => {
+  const s = stats.value
+  return [
+    { label: '货主数', value: s?.shipper_count ?? '—' },
+    { label: '公司数', value: s?.carrier_count ?? '—' },
+    { label: '司机数', value: s?.driver_count ?? '—' },
+    { label: '车辆数', value: s?.vehicle_count ?? '—' },
+    { label: '订单总数', value: orders.value.length || '—' },
+    { label: '待承接', value: s?.orders_pending_accept ?? '—' },
+    { label: '运输中', value: s?.orders_in_transit ?? '—' },
+    { label: '已完成', value: s?.orders_completed ?? '—' },
+    { label: '异常', value: s?.orders_exception ?? '—' },
+    { label: '待审认证', value: s?.pending_certifications ?? '—' },
+  ]
+})
+
+const todos = [
+  { text: '统一认证审核', path: '/admin/certifications', action: '去审核' },
+  { text: '货主认证审核', path: '/admin/shipper-certifications', action: '去审核' },
+  { text: '公司认证审核', path: '/admin/carriers', action: '去审核' },
+  { text: '车辆转籍', path: '/admin/vehicle-transfers', action: '去处理' },
+  { text: '平台异常管理', path: '/admin/platform-exceptions', action: '去处置' },
+]
+
+function stamp(value: string): string {
+  return value ? value.replace('T', ' ').slice(0, 16) : '—'
+}
 
 onMounted(async () => {
+  loading.value = true
   try {
-    stats.value = await adminApi.fetchAdminStats()
+    const [adminStats, orderRows] = await Promise.all([
+      adminApi.fetchAdminStats(),
+      adminApi.fetchPlatformOrders({}),
+    ])
+    stats.value = adminStats
+    orders.value = orderRows
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '加载运营统计失败')
+  } finally {
+    loading.value = false
   }
 })
 </script>
 
 <template>
-  <section class="home">
-    <h1 class="page-title">运营工作台</h1>
+  <section v-loading="loading">
+    <PageHeader title="工作台" subtitle="平台管理员 · 全局监控与审核" />
 
-    <h2 class="section-title">平台主体</h2>
-    <div class="cards">
-      <div class="card">
-        <span class="card-label">货主</span>
-        <span class="card-value">{{ stats?.shipper_count ?? '—' }}</span>
-      </div>
-      <div class="card">
-        <span class="card-label">物流公司</span>
-        <span class="card-value">{{ stats?.carrier_count ?? '—' }}</span>
-      </div>
-      <div class="card">
-        <span class="card-label">司机</span>
-        <span class="card-value">{{ stats?.driver_count ?? '—' }}</span>
-      </div>
-      <div class="card">
-        <span class="card-label">车辆</span>
-        <span class="card-value">{{ stats?.vehicle_count ?? '—' }}</span>
-      </div>
+    <div class="stats-grid">
+      <StatCard v-for="item in cards" :key="item.label" :value="item.value" :label="item.label" />
     </div>
 
-    <h2 class="section-title">运输订单</h2>
-    <div class="cards">
-      <div class="card">
-        <span class="card-label">待承接</span>
-        <span class="card-value">{{ stats?.orders_pending_accept ?? '—' }}</span>
-      </div>
-      <div class="card">
-        <span class="card-label">运输中</span>
-        <span class="card-value">{{ stats?.orders_in_transit ?? '—' }}</span>
-      </div>
-      <div class="card">
-        <span class="card-label">已完成</span>
-        <span class="card-value">{{ stats?.orders_completed ?? '—' }}</span>
-      </div>
-      <div class="card">
-        <span class="card-label">异常处理中</span>
-        <span class="card-value">{{ stats?.orders_exception ?? '—' }}</span>
-      </div>
-    </div>
+    <div class="panel-gap" />
 
-    <div class="notice-line">
-      <span>待审核认证：{{ stats?.pending_certifications ?? '—' }} 项</span>
-      <el-button type="primary" link @click="router.push('/admin/certifications')">
-        前往统一审核
-      </el-button>
-    </div>
+    <NoticeBar tone="info">
+      管理员仅有平台级只读查询 + 审核 / 禁用恢复 / 公告 / 异常处置权限，不能直接改写订单、运输任务、打卡或费用记录。
+    </NoticeBar>
+
+    <div class="panel-gap" />
+
+    <section class="panel">
+      <div class="panel-head"><span class="panel-title">审核待办</span></div>
+      <div class="panel-body">
+        <ul class="list-simple">
+          <li v-for="item in todos" :key="item.path">
+            <span>{{ item.text }}</span>
+            <span class="meta"><router-link :to="item.path" class="link">{{ item.action }}</router-link></span>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><span class="panel-title">平台运输动态</span></div>
+      <div class="panel-body panel-body--tight">
+        <EmptyState v-if="!orders.length" text="暂无运输订单" />
+        <div v-else class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr><th class="num">订单编号</th><th>货主 / 物流公司</th><th>货物</th><th>订单状态</th><th class="num">更新时间</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="order in orders.slice(0, 8)" :key="order.id">
+                <td class="num">{{ order.order_no }}</td>
+                <td>货主 #{{ order.shipper_id }} / {{ order.carrier_id ? `公司 #${order.carrier_id}` : '—' }}</td>
+                <td>{{ [order.cargo_name, order.quantity].filter(Boolean).join(' · ') }}</td>
+                <td><StatusPill :text="order.status" /></td>
+                <td class="num">{{ stamp(order.created_at) }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pagination"><span>共 {{ orders.length }} 条</span></div>
+        </div>
+      </div>
+    </section>
   </section>
 </template>
 
 <style scoped>
-.home {
-  padding: var(--space-2) 0;
-}
-
-.page-title {
-  margin: 0 0 var(--space-6);
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-}
-
-.section-title {
-  margin: var(--space-6) 0 var(--space-3);
-  font-size: var(--font-size-md);
-  font-weight: 600;
-}
-
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: var(--space-3);
-}
-
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-}
-
-.card-label {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-}
-
-.card-value {
-  font-size: var(--font-size-xl);
-  font-weight: 600;
-}
-
-.notice-line {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-top: var(--space-6);
-  padding: var(--space-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-}
+.panel-gap { height: var(--space-4); }
+.link { color: var(--color-accent); }
+.link:hover { color: var(--color-accent-hover); }
 </style>

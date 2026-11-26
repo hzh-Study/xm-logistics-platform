@@ -3,22 +3,20 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ApiError } from '@/api/request'
-import {
-  createTask,
-  dispatchHistory,
-  listCarrierOrders,
-  listTasks,
-  redispatchTask,
-} from '@/api/dispatch'
+import { createTask, dispatchHistory, listCarrierOrders, listTasks, redispatchTask } from '@/api/dispatch'
 import { listDrivers } from '@/api/driver'
 import { listVehicles } from '@/api/vehicle'
+import PageHeader from '@/components/PageHeader.vue'
+import FilterPanel from '@/components/FilterPanel.vue'
+import DetailDrawer from '@/components/DetailDrawer.vue'
+import StatusPill from '@/components/StatusPill.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import type { Driver } from '@/types/driver'
 import type { Order } from '@/types/order'
 import type { Vehicle } from '@/types/vehicle'
 import type { DispatchHistory, TaskStatus, TransportTask } from '@/types/dispatch'
 
 const router = useRouter()
-const orders = ref<Order[]>([])
 const tasks = ref<TransportTask[]>([])
 const drivers = ref<Driver[]>([])
 const vehicles = ref<Vehicle[]>([])
@@ -29,6 +27,10 @@ const redispatchVisible = ref(false)
 const historyVisible = ref(false)
 const historyRows = ref<DispatchHistory[]>([])
 const targetTask = ref<TransportTask | null>(null)
+const orderKeyword = ref('')
+const shipPlace = ref('')
+const recvPlace = ref('')
+const acceptedFrom = ref('')
 
 const form = reactive({
   order_id: null as number | null,
@@ -44,26 +46,51 @@ const redispatchForm = reactive({
   reason: '',
 })
 
-onMounted(load)
+function stamp(value: string): string {
+  return value ? value.replace('T', ' ').slice(0, 16) : '—'
+}
+
+const pendingOrders = ref<Order[]>([])
+const dispatchedTasks = ref<TransportTask[]>([])
 
 async function load(): Promise<void> {
   loading.value = true
   try {
     const [orderRows, taskRows, driverRows, vehicleRows] = await Promise.all([
-      listCarrierOrders(),
-      listTasks(),
-      listDrivers(),
-      listVehicles({ assignable: true }),
+      listCarrierOrders(), listTasks(), listDrivers(), listVehicles({ assignable: true }),
     ])
-    orders.value = orderRows.filter((row) => row.status === '已承接')
+    pendingOrders.value = orderRows.filter((row) => row.status === '已承接')
     tasks.value = taskRows
     drivers.value = driverRows.filter((row) => row.can_dispatch_new)
     vehicles.value = vehicleRows
+    applyFilter()
   } catch (error) {
     report(error, '读取派单数据失败')
   } finally {
     loading.value = false
   }
+}
+
+function applyFilter(): void {
+  dispatchedTasks.value = tasks.value.filter((task) => {
+    const order = pendingOrders.value.find((item) => item.id === task.order_id)
+    const ship = order ? `${order.shipping_snapshot.province}${order.shipping_snapshot.city}` : ''
+    const recv = order ? `${order.receiving_snapshot.province}${order.receiving_snapshot.city}` : ''
+    const orderNo = task.order_no
+    const placeMatch = !shipPlace.value || ship.includes(shipPlace.value)
+    const recvMatch = !recvPlace.value || recv.includes(recvPlace.value)
+    const noMatch = !orderKeyword.value || orderNo.includes(orderKeyword.value)
+    const dateMatch = !acceptedFrom.value || stamp(order?.accepted_at ?? '').slice(0, 10) >= acceptedFrom.value
+    return placeMatch && recvMatch && noMatch && dateMatch
+  })
+}
+
+function resetFilter(): void {
+  orderKeyword.value = ''
+  shipPlace.value = ''
+  recvPlace.value = ''
+  acceptedFrom.value = ''
+  applyFilter()
 }
 
 function report(error: unknown, fallback: string): void {
@@ -75,7 +102,6 @@ function report(error: unknown, fallback: string): void {
   ElMessage.error(error instanceof Error ? error.message : fallback)
 }
 
-/** datetime-local 的值补全秒与本地时区偏移，满足服务端 ISO 8601 约束。 */
 function toIso(value: string): string {
   if (!value) return ''
   return value.length === 16 ? `${value}:00+00:00` : value
@@ -83,22 +109,14 @@ function toIso(value: string): string {
 
 function openCreate(order?: Order): void {
   Object.assign(form, {
-    order_id: order?.id ?? null,
-    driver_account_id: null,
-    vehicle_id: null,
-    planned_load_at: '',
-    planned_deliver_at: '',
-    notes: '',
+    order_id: order?.id ?? null, driver_account_id: null, vehicle_id: null,
+    planned_load_at: '', planned_deliver_at: '', notes: '',
   })
   createVisible.value = true
 }
 
 async function submitCreate(): Promise<void> {
-  if (
-    form.order_id === null ||
-    form.driver_account_id === null ||
-    form.vehicle_id === null
-  ) {
+  if (form.order_id === null || form.driver_account_id === null || form.vehicle_id === null) {
     ElMessage.warning('请选择订单、司机与车辆')
     return
   }
@@ -124,11 +142,7 @@ async function submitCreate(): Promise<void> {
 
 function openRedispatch(row: TransportTask): void {
   targetTask.value = row
-  Object.assign(redispatchForm, {
-    driver_account_id: null,
-    vehicle_id: null,
-    reason: '',
-  })
+  Object.assign(redispatchForm, { driver_account_id: null, vehicle_id: null, reason: '' })
   redispatchVisible.value = true
 }
 
@@ -171,169 +185,165 @@ async function openHistory(row: TransportTask): Promise<void> {
 function canRedispatch(row: TransportTask): boolean {
   return (['待司机确认', '待装货'] as TaskStatus[]).includes(row.status)
 }
+
+function place(order: Order): string {
+  return `${order.shipping_snapshot.province}${order.shipping_snapshot.city} → ${order.receiving_snapshot.province}${order.receiving_snapshot.city}`
+}
+
+onMounted(load)
 </script>
 
 <template>
-  <section class="dispatch">
-    <h1 class="page-title">派单管理</h1>
-    <p class="page-note">为已承接订单创建运输任务；已起运任务须走运输异常流程，不能在此变更。</p>
+  <section v-loading="loading">
+    <PageHeader title="派单管理" :subtitle="`待派单 ${pendingOrders.length} · 已派单 ${tasks.length}`">
+      <template #actions><el-button type="primary" @click="openCreate()">新建派单</el-button></template>
+    </PageHeader>
 
-    <h2 class="section-title">待派单订单</h2>
-    <el-table :data="orders" border v-loading="loading" class="table">
-      <el-table-column prop="order_no" label="订单号" width="170" />
-      <el-table-column prop="cargo_name" label="货物" width="140" />
-      <el-table-column prop="vehicle_type" label="车型要求" width="120" />
-      <el-table-column prop="load_requirement" label="载重要求" width="130" />
-      <el-table-column prop="quote_amount_yuan" label="报价(元)" width="110" />
-      <el-table-column label="操作" width="100" fixed="right">
-        <template #default="{ row }: { row: Order }">
-          <el-button link type="primary" @click="openCreate(row)">派单</el-button>
-        </template>
-      </el-table-column>
-      <template #empty>暂无待派单订单</template>
-    </el-table>
+    <FilterPanel>
+      <div class="filter-grid">
+        <div class="field"><label class="field__label" for="dp-no">订单编号</label><el-input id="dp-no" v-model="orderKeyword" placeholder="请输入订单编号" clearable /></div>
+        <div class="field"><label class="field__label" for="dp-ship">发货地</label><el-input id="dp-ship" v-model="shipPlace" placeholder="请输入发货地" clearable /></div>
+        <div class="field"><label class="field__label" for="dp-recv">收货地</label><el-input id="dp-recv" v-model="recvPlace" placeholder="请输入收货地" clearable /></div>
+        <div class="field"><label class="field__label">承接时间</label><el-date-picker v-model="acceptedFrom" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" class="date-input" /></div>
+      </div>
+      <div class="filter-actions">
+        <el-button @click="resetFilter">重置</el-button>
+        <el-button type="primary" @click="applyFilter">查询</el-button>
+      </div>
+    </FilterPanel>
 
-    <h2 class="section-title">运输任务</h2>
-    <el-table :data="tasks" border class="table">
-      <el-table-column prop="task_no" label="任务号" width="170" />
-      <el-table-column prop="order_no" label="订单号" width="170" />
-      <el-table-column prop="driver_name" label="司机" width="100" />
-      <el-table-column prop="vehicle_plate" label="车牌" width="110" />
-      <el-table-column prop="planned_load_at" label="计划装货" width="180" />
-      <el-table-column prop="planned_deliver_at" label="计划送达" width="180" />
-      <el-table-column prop="status" label="任务状态" width="110" />
-      <el-table-column label="操作" width="220" fixed="right">
-        <template #default="{ row }: { row: TransportTask }">
-          <el-button link type="primary" :disabled="!canRedispatch(row)" @click="openRedispatch(row)">
-            重新派单
-          </el-button>
-          <el-button link @click="openHistory(row)">派单历史</el-button>
-          <el-button link @click="router.push(`/carrier/tasks/${row.id}/progress`)">进度</el-button>
-        </template>
-      </el-table-column>
-      <template #empty>暂无运输任务</template>
-    </el-table>
+    <section class="panel">
+      <div class="panel-head"><span class="panel-title">待派单运输订单</span></div>
+      <div class="panel-body panel-body--tight">
+        <EmptyState v-if="!pendingOrders.length" text="暂无待派单的运输订单" />
+        <div v-else class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr><th class="num">订单编号</th><th>货物</th><th>发货地 → 收货地</th><th class="num">计划装货</th><th class="num">承接时间</th><th class="ops">操作</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="order in pendingOrders" :key="order.id">
+                <td class="num">{{ order.order_no }}</td>
+                <td>{{ [order.cargo_name, order.quantity, order.weight].filter(Boolean).join(' · ') }}</td>
+                <td>{{ place(order) }}</td>
+                <td class="num">—（未排期）</td>
+                <td class="num">{{ stamp(order.accepted_at ?? '') }}</td>
+                <td class="ops">
+                  <el-button type="primary" link @click="openCreate(order)">派单</el-button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
 
-    <el-dialog v-model="createVisible" title="创建运输任务" width="620px">
-      <el-form label-width="120px">
-        <el-form-item label="运输订单" required>
-          <el-select v-model="form.order_id" placeholder="选择已承接订单">
-            <el-option
-              v-for="order in orders"
-              :key="order.id"
-              :label="`${order.order_no} · ${order.cargo_name}`"
-              :value="order.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="司机" required>
-          <el-select v-model="form.driver_account_id" placeholder="选择可派单司机">
-            <el-option
-              v-for="driver in drivers"
-              :key="driver.account_id"
-              :label="`${driver.name}（${driver.phone}）`"
-              :value="driver.account_id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="车辆" required>
-          <el-select v-model="form.vehicle_id" placeholder="选择可用车辆">
-            <el-option
-              v-for="vehicle in vehicles"
-              :key="vehicle.id"
-              :label="`${vehicle.plate_no} · ${vehicle.vehicle_type}`"
-              :value="vehicle.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="计划装货" required>
-          <el-input v-model="form.planned_load_at" placeholder="2026-11-23T10:00" />
-        </el-form-item>
-        <el-form-item label="计划送达" required>
-          <el-input v-model="form.planned_deliver_at" placeholder="2026-11-23T18:00" />
-        </el-form-item>
-        <el-form-item label="注意事项">
-          <el-input v-model="form.notes" type="textarea" maxlength="500" />
-        </el-form-item>
-      </el-form>
+    <section class="panel">
+      <div class="panel-head"><span class="panel-title">已派单任务</span></div>
+      <div class="panel-body panel-body--tight">
+        <EmptyState v-if="!dispatchedTasks.length" text="暂无已派单任务" />
+        <div v-else class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr><th class="num">任务编号</th><th>订单 / 货物</th><th>司机 / 车辆</th><th>任务状态</th><th class="num">计划装货</th><th class="ops">操作</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="task in dispatchedTasks" :key="task.id">
+                <td class="num">{{ task.task_no }}</td>
+                <td>{{ task.order_no }}<div class="cell-sub">{{ task.notes || '—' }}</div></td>
+                <td>{{ task.driver_name }} / {{ task.vehicle_plate }}</td>
+                <td><StatusPill :text="task.status" /></td>
+                <td class="num">{{ stamp(task.planned_load_at) }}</td>
+                <td class="ops">
+                  <el-button type="primary" link @click="router.push(`/carrier/tasks/${task.id}/progress`)">查看详情</el-button>
+                  <el-button v-if="canRedispatch(task)" type="primary" link @click="openRedispatch(task)">撤回改派</el-button>
+                  <el-button type="primary" link @click="openHistory(task)">派单历史</el-button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <DetailDrawer v-model="createVisible" title="新建派单">
+      <template #body>
+        <NoticeBar tone="info">派单校验：司机与车辆均须属于本公司且可用、司机具备准驾资格、车辆满足运输要求，且计划时段无冲突。</NoticeBar>
+        <form class="drawer-form">
+          <div class="field">
+            <label class="field__label"><span class="field__req">*</span>运输订单</label>
+            <el-select v-model="form.order_id" placeholder="全部" style="width: 100%">
+              <el-option v-for="order in pendingOrders" :key="order.id" :label="`${order.order_no} · ${order.cargo_name} ${order.weight || order.quantity || ''}`" :value="order.id" />
+            </el-select>
+          </div>
+          <div class="field">
+            <label class="field__label"><span class="field__req">*</span>司机</label>
+            <el-select v-model="form.driver_account_id" placeholder="全部" style="width: 100%">
+              <el-option v-for="driver in drivers" :key="driver.account_id" :label="`${driver.name} · ${driver.availability} · ${driver.employment}`" :value="driver.account_id" />
+            </el-select>
+          </div>
+          <div class="field">
+            <label class="field__label"><span class="field__req">*</span>车辆</label>
+            <el-select v-model="form.vehicle_id" placeholder="全部" style="width: 100%">
+              <el-option v-for="vehicle in vehicles" :key="vehicle.id" :label="`${vehicle.plate_no} · ${vehicle.availability} · ${vehicle.lifecycle}`" :value="vehicle.id" />
+            </el-select>
+          </div>
+          <div class="field"><label class="field__label"><span class="field__req">*</span>计划装货时间</label><el-date-picker v-model="form.planned_load_at" type="datetime" value-format="YYYY-MM-DDTHH:mm" class="date-input" /></div>
+          <div class="field"><label class="field__label"><span class="field__req">*</span>计划送达时间</label><el-date-picker v-model="form.planned_deliver_at" type="datetime" value-format="YYYY-MM-DDTHH:mm" class="date-input" /></div>
+          <div class="field"><label class="field__label">派单备注</label><el-input v-model="form.notes" type="textarea" :rows="2" /></div>
+        </form>
+      </template>
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submitCreate">派单</el-button>
+        <el-button type="primary" :loading="saving" @click="submitCreate">确认派单</el-button>
       </template>
-    </el-dialog>
+    </DetailDrawer>
 
-    <el-dialog v-model="redispatchVisible" title="未起运重新派单" width="560px">
-      <p class="dialog-note">仅待司机确认 / 待装货可重新派单，原新司机车辆与原因将留存。</p>
-      <el-form label-width="100px">
-        <el-form-item label="新司机" required>
-          <el-select v-model="redispatchForm.driver_account_id" placeholder="选择可派单司机">
-            <el-option
-              v-for="driver in drivers"
-              :key="driver.account_id"
-              :label="`${driver.name}（${driver.phone}）`"
-              :value="driver.account_id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="新车辆" required>
-          <el-select v-model="redispatchForm.vehicle_id" placeholder="选择可用车辆">
-            <el-option
-              v-for="vehicle in vehicles"
-              :key="vehicle.id"
-              :label="`${vehicle.plate_no} · ${vehicle.vehicle_type}`"
-              :value="vehicle.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="原因" required>
-          <el-input v-model="redispatchForm.reason" type="textarea" maxlength="500" />
-        </el-form-item>
-      </el-form>
+    <DetailDrawer v-model="redispatchVisible" title="撤回改派">
+      <template #body>
+        <NoticeBar tone="warning">改派将保留原派单记录，并追加新的派单记录，不覆盖原文。</NoticeBar>
+        <form class="drawer-form">
+          <div class="field">
+            <label class="field__label"><span class="field__req">*</span>新司机</label>
+            <el-select v-model="redispatchForm.driver_account_id" placeholder="全部" style="width: 100%">
+              <el-option v-for="driver in drivers" :key="driver.account_id" :label="`${driver.name} · ${driver.availability}`" :value="driver.account_id" />
+            </el-select>
+          </div>
+          <div class="field">
+            <label class="field__label"><span class="field__req">*</span>新车辆</label>
+            <el-select v-model="redispatchForm.vehicle_id" placeholder="全部" style="width: 100%">
+              <el-option v-for="vehicle in vehicles" :key="vehicle.id" :label="`${vehicle.plate_no} · ${vehicle.availability}`" :value="vehicle.id" />
+            </el-select>
+          </div>
+          <div class="field"><label class="field__label"><span class="field__req">*</span>改派原因</label><el-input v-model="redispatchForm.reason" type="textarea" :rows="3" /></div>
+        </form>
+      </template>
       <template #footer>
         <el-button @click="redispatchVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submitRedispatch">确认重新派单</el-button>
+        <el-button type="primary" :loading="saving" @click="submitRedispatch">确认改派</el-button>
       </template>
-    </el-dialog>
+    </DetailDrawer>
 
-    <el-dialog v-model="historyVisible" title="派单历史" width="720px">
-      <el-table :data="historyRows" border>
-        <el-table-column prop="dispatch_no" label="记录号" width="170" />
-        <el-table-column prop="action" label="动作" width="100" />
-        <el-table-column prop="original_driver_name" label="原司机" width="100" />
-        <el-table-column prop="new_driver_name" label="新司机" width="100" />
-        <el-table-column prop="original_vehicle_plate" label="原车牌" width="110" />
-        <el-table-column prop="new_vehicle_plate" label="新车牌" width="110" />
-        <el-table-column prop="reason" label="原因" min-width="140" />
-        <el-table-column prop="created_at" label="时间" width="180" />
-      </el-table>
-    </el-dialog>
+    <DetailDrawer v-model="historyVisible" title="派单历史">
+      <template #body>
+        <ul class="history-list">
+          <li v-for="(item, index) in historyRows" :key="item.id ?? index">
+            <strong>{{ item.action }}</strong>
+            <span>{{ item.original_driver_name || '—' }} → {{ item.new_driver_name || '—' }} · {{ item.original_vehicle_plate || '—' }} → {{ item.new_vehicle_plate || '—' }}</span>
+            <span class="meta">{{ item.reason || '—' }} · {{ item.actor }} · {{ stamp(item.created_at) }}</span>
+          </li>
+        </ul>
+        <EmptyState v-if="!historyRows.length" text="暂无派单历史" />
+      </template>
+    </DetailDrawer>
   </section>
 </template>
 
 <style scoped>
-.dispatch {
-  padding: var(--space-2) 0;
-}
-
-.page-title {
-  margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-}
-
-.page-note,
-.dialog-note {
-  margin: var(--space-1) 0 var(--space-6);
-  color: var(--color-text-muted);
-}
-
-.section-title {
-  margin: var(--space-6) 0 var(--space-3);
-  font-size: var(--font-size-md);
-  font-weight: 600;
-}
-
-.table {
-  width: 100%;
-}
+.date-input { width: 100%; }
+.drawer-form { padding-top: var(--space-4); }
+.history-list { margin: 0; padding: 0; list-style: none; }
+.history-list li { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); font-size: var(--font-size-sm); }
+.history-list li:last-child { border-bottom: 0; }
+.history-list .meta { color: var(--color-text-3); font-size: var(--font-size-xs); }
 </style>
